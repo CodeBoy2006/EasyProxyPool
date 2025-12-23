@@ -12,12 +12,26 @@ type Config struct {
 	HealthCheckConcurrency int      `yaml:"health_check_concurrency"`
 	UpdateIntervalMinutes  int      `yaml:"update_interval_minutes"`
 
+	Sources []SourceConfig `yaml:"sources"`
+
 	HealthCheck HealthCheckConfig `yaml:"health_check"`
 	Ports       PortsConfig       `yaml:"ports"`
 	Logging     LoggingConfig     `yaml:"logging"`
 	Auth        AuthConfig        `yaml:"auth"`
 	Admin       AdminConfig       `yaml:"admin"`
 	Selection   SelectionConfig   `yaml:"selection"`
+
+	Adapters AdaptersConfig `yaml:"adapters"`
+}
+
+type SourceConfig struct {
+	// Type supports:
+	// - raw_list: line-based lists (ip:port; socks5://ip:port also accepted)
+	// - clash_yaml: Clash format YAML (URL or local file path)
+	Type string `yaml:"type"`
+
+	URL  string `yaml:"url"`
+	Path string `yaml:"path"`
 }
 
 type HealthCheckConfig struct {
@@ -54,6 +68,45 @@ type SelectionConfig struct {
 	FailureBackoffSeconds int    `yaml:"failure_backoff_seconds"`
 	MaxBackoffSeconds     int    `yaml:"max_backoff_seconds"`
 	RetryNonIdempotent    bool   `yaml:"retry_non_idempotent"`
+}
+
+type AdaptersConfig struct {
+	Xray XrayConfig `yaml:"xray"`
+}
+
+type XrayConfig struct {
+	Enabled   bool   `yaml:"enabled"`
+	BinaryPath string `yaml:"binary_path"`
+	WorkDir   string `yaml:"work_dir"`
+
+	SOCKSListenStrict  string `yaml:"socks_listen_strict"`
+	SOCKSListenRelaxed string `yaml:"socks_listen_relaxed"`
+
+	MetricsListenStrict  string `yaml:"metrics_listen_strict"`
+	MetricsListenRelaxed string `yaml:"metrics_listen_relaxed"`
+
+	// UserPassword is used as a shared password for all per-node SOCKS accounts
+	// (username = nodeID). It should only be exposed on loopback interfaces.
+	UserPassword string `yaml:"user_password"`
+
+	Observatory ObservatoryConfig `yaml:"observatory"`
+
+	MaxNodes            int `yaml:"max_nodes"`
+	StartTimeoutSeconds int `yaml:"start_timeout_seconds"`
+}
+
+type ObservatoryConfig struct {
+	// Mode supports:
+	// - burst: use burstObservatory (recommended for large node counts)
+	// - observatory: use observatory
+	Mode string `yaml:"mode"`
+
+	Destination  string `yaml:"destination"`
+	Connectivity string `yaml:"connectivity"`
+
+	IntervalSeconds int `yaml:"interval_seconds"`
+	Sampling        int `yaml:"sampling"`
+	TimeoutSeconds  int `yaml:"timeout_seconds"`
 }
 
 func Load(path string) (Config, error) {
@@ -124,11 +177,51 @@ func applyDefaults(cfg *Config) {
 	if cfg.Selection.MaxBackoffSeconds <= 0 {
 		cfg.Selection.MaxBackoffSeconds = 600
 	}
+
+	if cfg.Adapters.Xray.WorkDir == "" {
+		cfg.Adapters.Xray.WorkDir = ".easyproxypool/xray"
+	}
+	if cfg.Adapters.Xray.SOCKSListenStrict == "" {
+		cfg.Adapters.Xray.SOCKSListenStrict = "127.0.0.1:17383"
+	}
+	if cfg.Adapters.Xray.SOCKSListenRelaxed == "" {
+		cfg.Adapters.Xray.SOCKSListenRelaxed = "127.0.0.1:17384"
+	}
+	if cfg.Adapters.Xray.MetricsListenStrict == "" {
+		cfg.Adapters.Xray.MetricsListenStrict = "127.0.0.1:17387"
+	}
+	if cfg.Adapters.Xray.MetricsListenRelaxed == "" {
+		cfg.Adapters.Xray.MetricsListenRelaxed = "127.0.0.1:17388"
+	}
+	if cfg.Adapters.Xray.UserPassword == "" {
+		cfg.Adapters.Xray.UserPassword = "easyproxypool"
+	}
+	if cfg.Adapters.Xray.Observatory.Mode == "" {
+		cfg.Adapters.Xray.Observatory.Mode = "burst"
+	}
+	if cfg.Adapters.Xray.Observatory.Destination == "" {
+		cfg.Adapters.Xray.Observatory.Destination = "https://www.gstatic.com/generate_204"
+	}
+	if cfg.Adapters.Xray.Observatory.IntervalSeconds <= 0 {
+		cfg.Adapters.Xray.Observatory.IntervalSeconds = 30
+	}
+	if cfg.Adapters.Xray.Observatory.Sampling <= 0 {
+		cfg.Adapters.Xray.Observatory.Sampling = 5
+	}
+	if cfg.Adapters.Xray.Observatory.TimeoutSeconds <= 0 {
+		cfg.Adapters.Xray.Observatory.TimeoutSeconds = 5
+	}
+	if cfg.Adapters.Xray.MaxNodes <= 0 {
+		cfg.Adapters.Xray.MaxNodes = 2000
+	}
+	if cfg.Adapters.Xray.StartTimeoutSeconds <= 0 {
+		cfg.Adapters.Xray.StartTimeoutSeconds = 10
+	}
 }
 
 func validate(cfg Config) error {
-	if len(cfg.ProxyListURLs) == 0 {
-		return fmt.Errorf("proxy_list_urls: at least one URL is required")
+	if len(cfg.ProxyListURLs) == 0 && len(cfg.Sources) == 0 {
+		return fmt.Errorf("proxy_list_urls or sources: at least one source is required")
 	}
 	if cfg.HealthCheckConcurrency <= 0 {
 		return fmt.Errorf("health_check_concurrency: must be > 0")
@@ -140,6 +233,32 @@ func validate(cfg Config) error {
 	case "round_robin", "random":
 	default:
 		return fmt.Errorf("selection.strategy: unsupported %q (use round_robin or random)", cfg.Selection.Strategy)
+	}
+
+	if cfg.Adapters.Xray.Enabled {
+		if cfg.Adapters.Xray.BinaryPath == "" {
+			return fmt.Errorf("adapters.xray.binary_path: required when adapters.xray.enabled=true")
+		}
+		if cfg.Adapters.Xray.SOCKSListenStrict == "" || cfg.Adapters.Xray.SOCKSListenRelaxed == "" {
+			return fmt.Errorf("adapters.xray.socks_listen_*: required when adapters.xray.enabled=true")
+		}
+		if cfg.Adapters.Xray.MetricsListenStrict == "" || cfg.Adapters.Xray.MetricsListenRelaxed == "" {
+			return fmt.Errorf("adapters.xray.metrics_listen_*: required when adapters.xray.enabled=true")
+		}
+		if cfg.Adapters.Xray.UserPassword == "" {
+			return fmt.Errorf("adapters.xray.user_password: required when adapters.xray.enabled=true")
+		}
+		switch cfg.Adapters.Xray.Observatory.Mode {
+		case "burst", "observatory":
+		default:
+			return fmt.Errorf("adapters.xray.observatory.mode: unsupported %q (use burst or observatory)", cfg.Adapters.Xray.Observatory.Mode)
+		}
+		if cfg.Adapters.Xray.Observatory.Destination == "" {
+			return fmt.Errorf("adapters.xray.observatory.destination: required when adapters.xray.enabled=true")
+		}
+		if cfg.Adapters.Xray.MaxNodes <= 0 {
+			return fmt.Errorf("adapters.xray.max_nodes: must be > 0")
+		}
 	}
 	return nil
 }

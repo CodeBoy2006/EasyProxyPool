@@ -7,6 +7,15 @@ proxy_list_urls:
   - "https://raw.githubusercontent.com/ClearProxy/checked-proxy-list/main/socks5/raw/all.txt"
   # - "https://another-source.com/socks5.txt"
 
+# 按类型的代理源（可选；如配置了 sources，可仅使用 sources 而不配置 proxy_list_urls）
+# sources:
+#   - type: clash_yaml
+#     url: "https://example.com/clash.yaml"
+#   - type: clash_yaml
+#     path: "./clash.yaml"
+#   - type: raw_list
+#     url: "https://example.com/socks5.txt"
+
 # 健康检查并发数（同时测试多少个代理）
 health_check_concurrency: 200
 
@@ -57,3 +66,25 @@ selection:
 admin:
   enabled: false
   addr: ":17287"
+
+# 协议适配器（可选）
+# adapters:
+#   xray:
+#     enabled: false
+#     binary_path: "/usr/local/bin/xray"
+#     work_dir: ".easyproxypool/xray"
+#     socks_listen_strict: "127.0.0.1:17383"
+#     socks_listen_relaxed: "127.0.0.1:17384"
+#     metrics_listen_strict: "127.0.0.1:17387"
+#     metrics_listen_relaxed: "127.0.0.1:17388"
+#     user_password: "easyproxypool"
+#     max_nodes: 2000
+#     start_timeout_seconds: 10
+#     observatory:
+#       # burst | observatory
+#       mode: burst
+#       destination: "https://www.gstatic.com/generate_204"
+#       connectivity: ""
+#       interval_seconds: 30
+#       sampling: 5
+#       timeout_seconds: 5

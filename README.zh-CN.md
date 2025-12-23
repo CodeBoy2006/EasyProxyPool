@@ -83,11 +83,13 @@ docker-compose up -d
 常用选项：
 
 - `proxy_list_urls`：代理源列表（每行 `ip:port`；也支持 `socks5://ip:port`）
+- `sources`：支持按类型配置源（例如 `clash_yaml`）（可选，可替代 `proxy_list_urls`）
 - `health_check.*`：测活超时、TLS 握手目标与阈值
 - `ports.*`：本地四个代理监听地址
 - `selection.*`：上游选择 + 重试/退避策略
 - `auth.*`：开启代理认证（如果监听在非本地地址上，强烈建议开启）
 - `admin.*`：管理接口开关与监听地址
+- `adapters.xray.*`：启用 xray-core 作为 Clash 节点协议适配层（可选，默认关闭）
 
 ## 管理接口（可选）
 
@@ -106,4 +108,3 @@ curl http://127.0.0.1:17287/status
 ## 许可证
 
 MIT
-

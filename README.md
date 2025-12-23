@@ -83,11 +83,13 @@ Edit `config.yaml`.
 Key options:
 
 - `proxy_list_urls`: list sources (each should return `ip:port` lines; `socks5://ip:port` also accepted)
+- `sources`: typed sources (e.g. `clash_yaml`) (optional; can be used instead of `proxy_list_urls`)
 - `health_check.*`: timeouts + TLS handshake target and threshold
 - `ports.*`: listening addresses for the 4 local proxies
 - `selection.*`: upstream selection + retries/backoff behavior
 - `auth.*`: enable proxy auth (recommended if binding to non-local interfaces)
 - `admin.*`: optional status API
+- `adapters.xray.*`: enable xray-core adapter for Clash-style nodes (optional; default disabled)
 
 ## Admin API (optional)
 
