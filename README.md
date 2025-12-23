@@ -1,5 +1,7 @@
 # EasyProxyPool
 
+English | [中文](README.zh-CN.md)
+
 EasyProxyPool is a local **SOCKS5 + HTTP/HTTPS (CONNECT)** proxy that rotates requests through a dynamic pool of upstream SOCKS5 proxies.
 
 It continuously fetches proxy lists from multiple sources, health-checks them, and keeps two pools:
@@ -104,4 +106,3 @@ curl http://127.0.0.1:17287/status
 ## License
 
 MIT
-
