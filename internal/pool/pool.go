@@ -3,18 +3,32 @@ package pool
 import (
 	"log/slog"
 	"math/rand"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
 type Entry struct {
+	ID            string
 	Addr          string
+	Username      string
+	Password      string
 	Latency       time.Duration
 	LastCheckedAt time.Time
 
 	failures      int
 	disabledUntil time.Time
+}
+
+func (e Entry) Key() string {
+	if strings.TrimSpace(e.ID) != "" {
+		return e.ID
+	}
+	if strings.TrimSpace(e.Username) != "" {
+		return e.Addr + "|" + e.Username
+	}
+	return e.Addr
 }
 
 type Pool struct {
@@ -58,7 +72,7 @@ func (p *Pool) Update(entries []Entry) {
 	p.entries = entries
 	p.index = make(map[string]int, len(entries))
 	for i := range entries {
-		p.index[entries[i].Addr] = i
+		p.index[entries[i].Key()] = i
 	}
 	atomic.StoreUint64(&p.rr, 0)
 

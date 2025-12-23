@@ -104,20 +104,24 @@ func (s *Server) dial(ctx context.Context, network, addr string) (net.Conn, erro
 			return nil, errors.New("no upstreams available")
 		}
 
-		c, err := dialViaUpstream(ctx, entry.Addr, network, addr)
+		c, err := dialViaUpstream(ctx, entry, network, addr)
 		if err != nil {
 			lastErr = err
-			s.pool.MarkFailure(entry.Addr, time.Now(), time.Duration(s.selection.FailureBackoffSeconds)*time.Second, time.Duration(s.selection.MaxBackoffSeconds)*time.Second)
+			s.pool.MarkFailure(entry.Key(), time.Now(), time.Duration(s.selection.FailureBackoffSeconds)*time.Second, time.Duration(s.selection.MaxBackoffSeconds)*time.Second)
 			continue
 		}
-		s.pool.MarkSuccess(entry.Addr)
+		s.pool.MarkSuccess(entry.Key())
 		return c, nil
 	}
 	return nil, lastErr
 }
 
-func dialViaUpstream(ctx context.Context, upstreamAddr, network, addr string) (net.Conn, error) {
-	dialer, err := proxy.SOCKS5("tcp", upstreamAddr, nil, proxy.Direct)
+func dialViaUpstream(ctx context.Context, upstream pool.Entry, network, addr string) (net.Conn, error) {
+	var auth *proxy.Auth
+	if strings.TrimSpace(upstream.Username) != "" || strings.TrimSpace(upstream.Password) != "" {
+		auth = &proxy.Auth{User: upstream.Username, Password: upstream.Password}
+	}
+	dialer, err := proxy.SOCKS5("tcp", upstream.Addr, auth, proxy.Direct)
 	if err != nil {
 		return nil, err
 	}

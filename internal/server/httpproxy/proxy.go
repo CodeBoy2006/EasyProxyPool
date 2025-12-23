@@ -55,11 +55,11 @@ func New(log *slog.Logger, addr string, mode Mode, p *pool.Pool, auth config.Aut
 	transport := &http.Transport{
 		Proxy: nil,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			upstreamAddr, _ := ctx.Value(upstreamContextKey{}).(string)
-			if strings.TrimSpace(upstreamAddr) == "" {
+			upstream, _ := ctx.Value(upstreamContextKey{}).(pool.Entry)
+			if strings.TrimSpace(upstream.Addr) == "" {
 				return nil, errors.New("missing upstream in context")
 			}
-			return dialThroughSOCKS5(ctx, upstreamAddr, network, addr)
+			return dialThroughSOCKS5(ctx, upstream, network, addr)
 		},
 		ForceAttemptHTTP2: true,
 		TLSClientConfig: &tls.Config{
@@ -194,13 +194,13 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) error {
 			return errors.New("no upstreams available")
 		}
 
-		upstreamConn, err := dialThroughSOCKS5(r.Context(), entry.Addr, "tcp", target)
+		upstreamConn, err := dialThroughSOCKS5(r.Context(), entry, "tcp", target)
 		if err != nil {
 			lastErr = err
-			s.pool.MarkFailure(entry.Addr, time.Now(), time.Duration(s.selection.FailureBackoffSeconds)*time.Second, time.Duration(s.selection.MaxBackoffSeconds)*time.Second)
+			s.pool.MarkFailure(entry.Key(), time.Now(), time.Duration(s.selection.FailureBackoffSeconds)*time.Second, time.Duration(s.selection.MaxBackoffSeconds)*time.Second)
 			continue
 		}
-		s.pool.MarkSuccess(entry.Addr)
+		s.pool.MarkSuccess(entry.Key())
 
 		_, _ = clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 
@@ -243,11 +243,11 @@ func (s *Server) handleForward(w http.ResponseWriter, r *http.Request) (int, err
 			return http.StatusServiceUnavailable, errors.New("no upstreams available")
 		}
 
-		attemptReq := outReq.Clone(context.WithValue(outReq.Context(), upstreamContextKey{}, entry.Addr))
+		attemptReq := outReq.Clone(context.WithValue(outReq.Context(), upstreamContextKey{}, entry))
 		resp, err := s.client.Do(attemptReq)
 		if err != nil {
 			lastErr = err
-			s.pool.MarkFailure(entry.Addr, time.Now(), time.Duration(s.selection.FailureBackoffSeconds)*time.Second, time.Duration(s.selection.MaxBackoffSeconds)*time.Second)
+			s.pool.MarkFailure(entry.Key(), time.Now(), time.Duration(s.selection.FailureBackoffSeconds)*time.Second, time.Duration(s.selection.MaxBackoffSeconds)*time.Second)
 			if retryable && attempt < s.selection.Retries {
 				continue
 			}
@@ -255,7 +255,7 @@ func (s *Server) handleForward(w http.ResponseWriter, r *http.Request) (int, err
 			return http.StatusBadGateway, err
 		}
 		defer resp.Body.Close()
-		s.pool.MarkSuccess(entry.Addr)
+		s.pool.MarkSuccess(entry.Key())
 
 		stripHopByHopHeaders(resp.Header)
 		copyHeader(w.Header(), resp.Header)
@@ -268,8 +268,12 @@ func (s *Server) handleForward(w http.ResponseWriter, r *http.Request) (int, err
 	return http.StatusBadGateway, lastErr
 }
 
-func dialThroughSOCKS5(ctx context.Context, upstreamAddr, network, addr string) (net.Conn, error) {
-	dialer, err := proxy.SOCKS5("tcp", upstreamAddr, nil, proxy.Direct)
+func dialThroughSOCKS5(ctx context.Context, upstream pool.Entry, network, addr string) (net.Conn, error) {
+	var auth *proxy.Auth
+	if strings.TrimSpace(upstream.Username) != "" || strings.TrimSpace(upstream.Password) != "" {
+		auth = &proxy.Auth{User: upstream.Username, Password: upstream.Password}
+	}
+	dialer, err := proxy.SOCKS5("tcp", upstream.Addr, auth, proxy.Direct)
 	if err != nil {
 		return nil, err
 	}

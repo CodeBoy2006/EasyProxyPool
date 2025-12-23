@@ -14,6 +14,21 @@ type Status struct {
 	LastFetched     int
 	LastStrict      int
 	LastRelaxed     int
+
+	LastDetails UpdateDetails
+}
+
+type UpdateDetails struct {
+	Adapter string
+
+	NodesTotal    int
+	NodesIncluded int
+
+	ProblemsCount int
+	SkippedByType map[string]int
+
+	XrayStrictHash  string
+	XrayRelaxedHash string
 }
 
 func NewStatus() *Status {
@@ -26,13 +41,14 @@ func (s *Status) SetStart(t time.Time) {
 	s.LastUpdateStart = t
 }
 
-func (s *Status) SetEnd(t time.Time, fetched, strict, relaxed int, err error) {
+func (s *Status) SetEnd(t time.Time, fetched, strict, relaxed int, err error, details UpdateDetails) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.LastUpdateEnd = t
 	s.LastFetched = fetched
 	s.LastStrict = strict
 	s.LastRelaxed = relaxed
+	s.LastDetails = cloneDetails(details)
 	if err != nil {
 		s.LastUpdateErr = err.Error()
 	} else {
@@ -50,5 +66,18 @@ func (s *Status) Snapshot() Status {
 		LastFetched:     s.LastFetched,
 		LastStrict:      s.LastStrict,
 		LastRelaxed:     s.LastRelaxed,
+		LastDetails:     cloneDetails(s.LastDetails),
 	}
+}
+
+func cloneDetails(d UpdateDetails) UpdateDetails {
+	if d.SkippedByType == nil {
+		return d
+	}
+	cp := make(map[string]int, len(d.SkippedByType))
+	for k, v := range d.SkippedByType {
+		cp[k] = v
+	}
+	d.SkippedByType = cp
+	return d
 }
