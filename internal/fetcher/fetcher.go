@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -12,23 +13,25 @@ import (
 )
 
 type Fetcher struct {
-	log *slog.Logger
+	log    *slog.Logger
+	client *http.Client
 }
 
 func New(log *slog.Logger) *Fetcher {
-	return &Fetcher{log: log}
-}
-
-func (f *Fetcher) Fetch(ctx context.Context, urls []string) ([]string, error) {
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
+	return &Fetcher{
+		log: log,
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
 			},
 		},
 	}
+}
 
+func (f *Fetcher) Fetch(ctx context.Context, urls []string) ([]string, error) {
 	set := make(map[string]struct{})
 	var out []string
 
@@ -40,7 +43,7 @@ func (f *Fetcher) Fetch(ctx context.Context, urls []string) ([]string, error) {
 			continue
 		}
 
-		resp, err := client.Do(req)
+		resp, err := f.client.Do(req)
 		if err != nil {
 			f.log.Warn("fetch failed", "url", url, "err", err)
 			continue
@@ -80,4 +83,24 @@ func (f *Fetcher) Fetch(ctx context.Context, urls []string) ([]string, error) {
 		return nil, fmt.Errorf("no proxies fetched from any source")
 	}
 	return out, nil
+}
+
+func (f *Fetcher) FetchBytes(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	resp, err := f.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+	return data, nil
 }

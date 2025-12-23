@@ -11,6 +11,7 @@ import (
 	"github.com/CodeBoy2006/EasyProxyPool/internal/fetcher"
 	"github.com/CodeBoy2006/EasyProxyPool/internal/health"
 	"github.com/CodeBoy2006/EasyProxyPool/internal/pool"
+	"github.com/CodeBoy2006/EasyProxyPool/internal/sources"
 )
 
 type Updater struct {
@@ -94,7 +95,7 @@ func (u *Updater) runOnce(ctx context.Context) {
 	u.status.SetStart(start)
 	u.log.Info("updating proxy pools")
 
-	proxies, err := u.fetcher.Fetch(ctx, u.cfg.ProxyListURLs)
+	proxies, err := u.loadSOCKS5Upstreams(ctx)
 	if err != nil {
 		u.status.SetEnd(time.Now(), 0, 0, 0, err)
 		u.log.Warn("fetch failed", "err", err)
@@ -183,6 +184,48 @@ func (u *Updater) runOnce(ctx context.Context) {
 		"relaxed", len(relaxedEntries),
 		"took", time.Since(start).String(),
 	)
+}
+
+func (u *Updater) loadSOCKS5Upstreams(ctx context.Context) ([]string, error) {
+	set := make(map[string]struct{})
+	var out []string
+	add := func(addr string) {
+		if _, ok := set[addr]; ok {
+			return
+		}
+		set[addr] = struct{}{}
+		out = append(out, addr)
+	}
+
+	// Legacy line-based sources.
+	if len(u.cfg.ProxyListURLs) > 0 {
+		addrs, err := u.fetcher.Fetch(ctx, u.cfg.ProxyListURLs)
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range addrs {
+			add(a)
+		}
+	}
+
+	// Typed sources (currently only SOCKS5 nodes are usable without adapters).
+	if len(u.cfg.Sources) > 0 {
+		res, err := sources.New(u.log).Load(ctx, u.cfg.Sources)
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range res.SOCKS5Addrs {
+			add(a)
+		}
+		for _, p := range res.Problems {
+			u.log.Warn("source problem", "msg", p)
+		}
+	}
+
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no proxies fetched from any source")
+	}
+	return out, nil
 }
 
 func (u *Updater) String() string {
