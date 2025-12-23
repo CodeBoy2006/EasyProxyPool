@@ -91,6 +91,42 @@ Key options:
 - `admin.*`: optional status API
 - `adapters.xray.*`: enable xray-core adapter for Clash-style nodes (optional; default disabled)
 
+### Clash YAML + xray-core adapter (optional)
+
+To use Clash format nodes (vmess/vless/trojan/ss/socks5/http) without implementing each protocol in Go,
+enable the xray adapter and add a `clash_yaml` source:
+
+```yaml
+sources:
+  - type: clash_yaml
+    path: "./clash.yaml"   # or url: "https://example.com/clash.yaml"
+
+adapters:
+  xray:
+    enabled: true
+    binary_path: "/usr/local/bin/xray"
+    # Keep xray on loopback. EasyProxyPool routes each connection by SOCKS username (= nodeID).
+    socks_listen_strict: "127.0.0.1:17383"
+    socks_listen_relaxed: "127.0.0.1:17384"
+    # Used for polling /debug/vars (observatory alive/delay)
+    metrics_listen_strict: "127.0.0.1:17387"
+    metrics_listen_relaxed: "127.0.0.1:17388"
+    fallback_to_legacy_on_error: true
+```
+
+Notes:
+
+- STRICT/RELAXED in xray mode is implemented by running two xray instances with different TLS behavior.
+- Observatory uses HTTPing probes; tune `adapters.xray.observatory.*` for your environment.
+- If xray fails to start or metrics are unavailable, EasyProxyPool keeps the existing pools; with
+  `fallback_to_legacy_on_error: true` it will also try the legacy `proxy_list_urls` pipeline.
+
+### Security / licensing
+
+- Do not expose the local proxy ports publicly without auth and network controls.
+- Keep xray SOCKS/metrics listeners on loopback interfaces.
+- xray-core is MPL-2.0; if you redistribute xray binaries with your image/release, include its license and notices.
+
 ## Admin API (optional)
 
 Enable `admin.enabled: true` (default addr `:17287`), then:

@@ -91,6 +91,41 @@ docker-compose up -d
 - `admin.*`：管理接口开关与监听地址
 - `adapters.xray.*`：启用 xray-core 作为 Clash 节点协议适配层（可选，默认关闭）
 
+### Clash YAML + xray-core 协议适配（可选）
+
+如需使用 Clash 格式节点（vmess/vless/trojan/ss/socks5/http 等）且不想在 Go 中逐协议实现，
+可以启用 xray 适配器，并添加 `clash_yaml` 源：
+
+```yaml
+sources:
+  - type: clash_yaml
+    path: "./clash.yaml"   # 或 url: "https://example.com/clash.yaml"
+
+adapters:
+  xray:
+    enabled: true
+    binary_path: "/usr/local/bin/xray"
+    # 建议仅监听在本机回环。EasyProxyPool 会用 SOCKS username (= nodeID) 指定每条连接走哪个节点。
+    socks_listen_strict: "127.0.0.1:17383"
+    socks_listen_relaxed: "127.0.0.1:17384"
+    # 用于拉取 /debug/vars（observatory 的 alive/delay）
+    metrics_listen_strict: "127.0.0.1:17387"
+    metrics_listen_relaxed: "127.0.0.1:17388"
+    fallback_to_legacy_on_error: true
+```
+
+说明：
+
+- xray 模式下的 STRICT/RELAXED 通过两个 xray 实例实现（TLS 行为不同）。
+- Observatory 采用 HTTPing 探测；可通过 `adapters.xray.observatory.*` 调整探测目标与间隔。
+- 若 xray 启动失败或 metrics 不可用，程序会保留现有代理池；若开启 `fallback_to_legacy_on_error: true`，会尝试回退到 `proxy_list_urls` 的旧流程。
+
+### 安全 / 许可提示
+
+- 不要将本项目代理端口直接暴露到公网；至少开启认证并配合防火墙/访问控制。
+- 建议将 xray 的 SOCKS/metrics 仅监听在回环地址（127.0.0.1）。
+- xray-core 使用 MPL-2.0；若你在镜像/发行包中分发 xray 二进制，请同时包含其许可证与相关说明。
+
 ## 管理接口（可选）
 
 在 `config.yaml` 中设置 `admin.enabled: true`（默认端口 `:17287`），然后：
