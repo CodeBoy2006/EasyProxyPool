@@ -143,10 +143,187 @@ func (u *Updater) runOnce(ctx context.Context) {
 		return
 	}
 
+	u.runOnceLegacy(ctx, start, UpdateDetails{Adapter: "legacy"})
+}
+
+func (u *Updater) runOnceXray(ctx context.Context, start time.Time) {
+	fallbackEnabled := u.cfg.Adapters.Xray.FallbackToLegacyOnError == nil || *u.cfg.Adapters.Xray.FallbackToLegacyOnError
+
+	specs, res, err := u.loadUpstreamSpecs(ctx)
+	if err != nil {
+		if fallbackEnabled {
+			u.log.Warn("xray load specs failed; falling back to legacy", "err", err)
+			u.runOnceLegacy(ctx, start, UpdateDetails{Adapter: "xray_fallback", FallbackUsed: true, FallbackErr: err.Error()})
+			return
+		}
+		u.status.SetEnd(time.Now(), 0, 0, 0, err, UpdateDetails{Adapter: "xray"})
+		u.log.Warn("load specs failed", "err", err)
+		return
+	}
+
+	genStrict, err := xray.Generate(specs, xray.GenerateOptions{
+		Mode:           xray.ModeStrict,
+		SOCKSListen:    u.cfg.Adapters.Xray.SOCKSListenStrict,
+		MetricsListen:  u.cfg.Adapters.Xray.MetricsListenStrict,
+		UserPassword:   u.cfg.Adapters.Xray.UserPassword,
+		MaxNodes:       u.cfg.Adapters.Xray.MaxNodes,
+		Observatory:    u.cfg.Adapters.Xray.Observatory,
+	})
+	if err != nil {
+		if fallbackEnabled {
+			u.log.Warn("xray config strict failed; falling back to legacy", "err", err)
+			u.runOnceLegacy(ctx, start, UpdateDetails{Adapter: "xray_fallback", NodesTotal: len(specs), ProblemsCount: len(res.Problems), SkippedByType: res.Skipped, FallbackUsed: true, FallbackErr: err.Error()})
+			return
+		}
+		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray"})
+		u.log.Warn("xray config (strict) failed", "err", err)
+		return
+	}
+	genRelaxed, err := xray.Generate(specs, xray.GenerateOptions{
+		Mode:           xray.ModeRelaxed,
+		SOCKSListen:    u.cfg.Adapters.Xray.SOCKSListenRelaxed,
+		MetricsListen:  u.cfg.Adapters.Xray.MetricsListenRelaxed,
+		UserPassword:   u.cfg.Adapters.Xray.UserPassword,
+		MaxNodes:       u.cfg.Adapters.Xray.MaxNodes,
+		Observatory:    u.cfg.Adapters.Xray.Observatory,
+	})
+	if err != nil {
+		if fallbackEnabled {
+			u.log.Warn("xray config relaxed failed; falling back to legacy", "err", err)
+			u.runOnceLegacy(ctx, start, UpdateDetails{Adapter: "xray_fallback", NodesTotal: len(specs), ProblemsCount: len(res.Problems), SkippedByType: res.Skipped, FallbackUsed: true, FallbackErr: err.Error()})
+			return
+		}
+		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray"})
+		u.log.Warn("xray config (relaxed) failed", "err", err)
+		return
+	}
+
+	if err := u.xrayStrict.Ensure(ctx, genStrict.ConfigJSON, genStrict.Hash); err != nil {
+		if fallbackEnabled {
+			u.log.Warn("xray ensure strict failed; falling back to legacy", "err", err)
+			u.runOnceLegacy(ctx, start, UpdateDetails{
+				Adapter:         "xray_fallback",
+				NodesTotal:      len(specs),
+				ProblemsCount:   len(res.Problems),
+				SkippedByType:   mergeSkipped(genStrict.Skipped, genRelaxed.Skipped, res.Skipped),
+				XrayStrictHash:  genStrict.Hash,
+				XrayRelaxedHash: genRelaxed.Hash,
+				FallbackUsed:    true,
+				FallbackErr:     err.Error(),
+			})
+			return
+		}
+		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray", XrayStrictHash: genStrict.Hash, XrayRelaxedHash: genRelaxed.Hash})
+		u.log.Warn("xray ensure strict failed", "err", err)
+		return
+	}
+	if err := u.xrayRelaxed.Ensure(ctx, genRelaxed.ConfigJSON, genRelaxed.Hash); err != nil {
+		if fallbackEnabled {
+			u.log.Warn("xray ensure relaxed failed; falling back to legacy", "err", err)
+			u.runOnceLegacy(ctx, start, UpdateDetails{
+				Adapter:         "xray_fallback",
+				NodesTotal:      len(specs),
+				ProblemsCount:   len(res.Problems),
+				SkippedByType:   mergeSkipped(genStrict.Skipped, genRelaxed.Skipped, res.Skipped),
+				XrayStrictHash:  genStrict.Hash,
+				XrayRelaxedHash: genRelaxed.Hash,
+				FallbackUsed:    true,
+				FallbackErr:     err.Error(),
+			})
+			return
+		}
+		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray", XrayStrictHash: genStrict.Hash, XrayRelaxedHash: genRelaxed.Hash})
+		u.log.Warn("xray ensure relaxed failed", "err", err)
+		return
+	}
+
+	hs, err := u.metricsStrict.Fetch(ctx)
+	if err != nil {
+		if fallbackEnabled {
+			u.log.Warn("metrics strict failed; falling back to legacy", "err", err)
+			u.runOnceLegacy(ctx, start, UpdateDetails{Adapter: "xray_fallback", XrayStrictHash: genStrict.Hash, XrayRelaxedHash: genRelaxed.Hash, FallbackUsed: true, FallbackErr: err.Error()})
+			return
+		}
+		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray", XrayStrictHash: genStrict.Hash, XrayRelaxedHash: genRelaxed.Hash})
+		u.log.Warn("metrics strict failed", "err", err)
+		return
+	}
+	hr, err := u.metricsRelaxed.Fetch(ctx)
+	if err != nil {
+		if fallbackEnabled {
+			u.log.Warn("metrics relaxed failed; falling back to legacy", "err", err)
+			u.runOnceLegacy(ctx, start, UpdateDetails{Adapter: "xray_fallback", XrayStrictHash: genStrict.Hash, XrayRelaxedHash: genRelaxed.Hash, FallbackUsed: true, FallbackErr: err.Error()})
+			return
+		}
+		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray", XrayStrictHash: genStrict.Hash, XrayRelaxedHash: genRelaxed.Hash})
+		u.log.Warn("metrics relaxed failed", "err", err)
+		return
+	}
+
+	now := time.Now()
+	strictEntries := make([]pool.Entry, 0, len(genStrict.Included))
+	relaxedEntries := make([]pool.Entry, 0, len(genRelaxed.Included))
+
+	for _, id := range genStrict.Included {
+		if h, ok := hs[id]; ok && h.Alive {
+			strictEntries = append(strictEntries, pool.Entry{
+				ID:            id,
+				Addr:          u.cfg.Adapters.Xray.SOCKSListenStrict,
+				Username:      id,
+				Password:      u.cfg.Adapters.Xray.UserPassword,
+				Latency:       h.Delay,
+				LastCheckedAt: now,
+			})
+		}
+	}
+	for _, id := range genRelaxed.Included {
+		if h, ok := hr[id]; ok && h.Alive {
+			relaxedEntries = append(relaxedEntries, pool.Entry{
+				ID:            id,
+				Addr:          u.cfg.Adapters.Xray.SOCKSListenRelaxed,
+				Username:      id,
+				Password:      u.cfg.Adapters.Xray.UserPassword,
+				Latency:       h.Delay,
+				LastCheckedAt: now,
+			})
+		}
+	}
+
+	if len(strictEntries) > 0 {
+		u.strictPool.Update(strictEntries)
+	} else {
+		u.log.Warn("strict pool empty; keeping existing")
+	}
+	if len(relaxedEntries) > 0 {
+		u.relaxedPool.Update(relaxedEntries)
+	} else {
+		u.log.Warn("relaxed pool empty; keeping existing")
+	}
+
+	details := UpdateDetails{
+		Adapter:         "xray",
+		NodesTotal:      len(specs),
+		NodesIncluded:   len(specs),
+		ProblemsCount:   len(res.Problems),
+		SkippedByType:   mergeSkipped(genStrict.Skipped, genRelaxed.Skipped, res.Skipped),
+		XrayStrictHash:  genStrict.Hash,
+		XrayRelaxedHash: genRelaxed.Hash,
+	}
+	u.status.SetEnd(time.Now(), len(specs), len(strictEntries), len(relaxedEntries), nil, details)
+	u.log.Info("update complete",
+		"adapter", "xray",
+		"nodes", len(specs),
+		"strict", len(strictEntries),
+		"relaxed", len(relaxedEntries),
+		"took", time.Since(start).String(),
+	)
+}
+
+func (u *Updater) runOnceLegacy(ctx context.Context, start time.Time, details UpdateDetails) {
 	proxies, err := u.loadSOCKS5Upstreams(ctx)
 	if err != nil {
-		u.status.SetEnd(time.Now(), 0, 0, 0, err, UpdateDetails{Adapter: "legacy"})
-		u.log.Warn("fetch failed", "err", err)
+		u.status.SetEnd(time.Now(), 0, 0, 0, err, details)
+		u.log.Warn("fetch failed", "adapter", details.Adapter, "err", err)
 		return
 	}
 
@@ -225,127 +402,10 @@ func (u *Updater) runOnce(ctx context.Context) {
 		u.log.Warn("relaxed pool empty; keeping existing")
 	}
 
-	u.status.SetEnd(time.Now(), len(proxies), len(strictEntries), len(relaxedEntries), nil, UpdateDetails{Adapter: "legacy"})
+	u.status.SetEnd(time.Now(), len(proxies), len(strictEntries), len(relaxedEntries), nil, details)
 	u.log.Info("update complete",
+		"adapter", details.Adapter,
 		"fetched", len(proxies),
-		"strict", len(strictEntries),
-		"relaxed", len(relaxedEntries),
-		"took", time.Since(start).String(),
-	)
-}
-
-func (u *Updater) runOnceXray(ctx context.Context, start time.Time) {
-	specs, res, err := u.loadUpstreamSpecs(ctx)
-	if err != nil {
-		u.status.SetEnd(time.Now(), 0, 0, 0, err, UpdateDetails{Adapter: "xray"})
-		u.log.Warn("load specs failed", "err", err)
-		return
-	}
-
-	genStrict, err := xray.Generate(specs, xray.GenerateOptions{
-		Mode:           xray.ModeStrict,
-		SOCKSListen:    u.cfg.Adapters.Xray.SOCKSListenStrict,
-		MetricsListen:  u.cfg.Adapters.Xray.MetricsListenStrict,
-		UserPassword:   u.cfg.Adapters.Xray.UserPassword,
-		MaxNodes:       u.cfg.Adapters.Xray.MaxNodes,
-		Observatory:    u.cfg.Adapters.Xray.Observatory,
-	})
-	if err != nil {
-		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray"})
-		u.log.Warn("xray config (strict) failed", "err", err)
-		return
-	}
-	genRelaxed, err := xray.Generate(specs, xray.GenerateOptions{
-		Mode:           xray.ModeRelaxed,
-		SOCKSListen:    u.cfg.Adapters.Xray.SOCKSListenRelaxed,
-		MetricsListen:  u.cfg.Adapters.Xray.MetricsListenRelaxed,
-		UserPassword:   u.cfg.Adapters.Xray.UserPassword,
-		MaxNodes:       u.cfg.Adapters.Xray.MaxNodes,
-		Observatory:    u.cfg.Adapters.Xray.Observatory,
-	})
-	if err != nil {
-		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray"})
-		u.log.Warn("xray config (relaxed) failed", "err", err)
-		return
-	}
-
-	if err := u.xrayStrict.Ensure(ctx, genStrict.ConfigJSON, genStrict.Hash); err != nil {
-		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray", XrayStrictHash: genStrict.Hash, XrayRelaxedHash: genRelaxed.Hash})
-		u.log.Warn("xray ensure strict failed", "err", err)
-		return
-	}
-	if err := u.xrayRelaxed.Ensure(ctx, genRelaxed.ConfigJSON, genRelaxed.Hash); err != nil {
-		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray", XrayStrictHash: genStrict.Hash, XrayRelaxedHash: genRelaxed.Hash})
-		u.log.Warn("xray ensure relaxed failed", "err", err)
-		return
-	}
-
-	hs, err := u.metricsStrict.Fetch(ctx)
-	if err != nil {
-		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray", XrayStrictHash: genStrict.Hash, XrayRelaxedHash: genRelaxed.Hash})
-		u.log.Warn("metrics strict failed", "err", err)
-		return
-	}
-	hr, err := u.metricsRelaxed.Fetch(ctx)
-	if err != nil {
-		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray", XrayStrictHash: genStrict.Hash, XrayRelaxedHash: genRelaxed.Hash})
-		u.log.Warn("metrics relaxed failed", "err", err)
-		return
-	}
-
-	now := time.Now()
-	strictEntries := make([]pool.Entry, 0, len(genStrict.Included))
-	relaxedEntries := make([]pool.Entry, 0, len(genRelaxed.Included))
-
-	for _, id := range genStrict.Included {
-		if h, ok := hs[id]; ok && h.Alive {
-			strictEntries = append(strictEntries, pool.Entry{
-				ID:            id,
-				Addr:          u.cfg.Adapters.Xray.SOCKSListenStrict,
-				Username:      id,
-				Password:      u.cfg.Adapters.Xray.UserPassword,
-				Latency:       h.Delay,
-				LastCheckedAt: now,
-			})
-		}
-	}
-	for _, id := range genRelaxed.Included {
-		if h, ok := hr[id]; ok && h.Alive {
-			relaxedEntries = append(relaxedEntries, pool.Entry{
-				ID:            id,
-				Addr:          u.cfg.Adapters.Xray.SOCKSListenRelaxed,
-				Username:      id,
-				Password:      u.cfg.Adapters.Xray.UserPassword,
-				Latency:       h.Delay,
-				LastCheckedAt: now,
-			})
-		}
-	}
-
-	if len(strictEntries) > 0 {
-		u.strictPool.Update(strictEntries)
-	} else {
-		u.log.Warn("strict pool empty; keeping existing")
-	}
-	if len(relaxedEntries) > 0 {
-		u.relaxedPool.Update(relaxedEntries)
-	} else {
-		u.log.Warn("relaxed pool empty; keeping existing")
-	}
-
-	details := UpdateDetails{
-		Adapter:         "xray",
-		NodesTotal:      len(specs),
-		NodesIncluded:   len(specs),
-		ProblemsCount:   len(res.Problems),
-		SkippedByType:   mergeSkipped(genStrict.Skipped, genRelaxed.Skipped, res.Skipped),
-		XrayStrictHash:  genStrict.Hash,
-		XrayRelaxedHash: genRelaxed.Hash,
-	}
-	u.status.SetEnd(time.Now(), len(specs), len(strictEntries), len(relaxedEntries), nil, details)
-	u.log.Info("update complete",
-		"adapter", "xray",
-		"nodes", len(specs),
 		"strict", len(strictEntries),
 		"relaxed", len(relaxedEntries),
 		"took", time.Since(start).String(),

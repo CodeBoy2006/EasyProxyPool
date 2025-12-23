@@ -93,6 +93,9 @@ type XrayConfig struct {
 
 	MaxNodes            int `yaml:"max_nodes"`
 	StartTimeoutSeconds int `yaml:"start_timeout_seconds"`
+
+	// If true, updater will fall back to legacy SOCKS5 list mode when xray startup/metrics fail.
+	FallbackToLegacyOnError *bool `yaml:"fallback_to_legacy_on_error"`
 }
 
 type ObservatoryConfig struct {
@@ -216,6 +219,10 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Adapters.Xray.StartTimeoutSeconds <= 0 {
 		cfg.Adapters.Xray.StartTimeoutSeconds = 10
+	}
+	if cfg.Adapters.Xray.FallbackToLegacyOnError == nil {
+		b := true
+		cfg.Adapters.Xray.FallbackToLegacyOnError = &b
 	}
 }
 

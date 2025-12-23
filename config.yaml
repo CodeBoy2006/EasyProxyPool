@@ -78,6 +78,7 @@ admin:
 #     metrics_listen_strict: "127.0.0.1:17387"
 #     metrics_listen_relaxed: "127.0.0.1:17388"
 #     user_password: "easyproxypool"
+#     fallback_to_legacy_on_error: true
 #     max_nodes: 2000
 #     start_timeout_seconds: 10
 #     observatory:

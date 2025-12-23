@@ -29,6 +29,9 @@ type UpdateDetails struct {
 
 	XrayStrictHash  string
 	XrayRelaxedHash string
+
+	FallbackUsed bool
+	FallbackErr  string
 }
 
 func NewStatus() *Status {
