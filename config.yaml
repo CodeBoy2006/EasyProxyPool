@@ -1,0 +1,59 @@
+# 动态代理配置文件
+
+# 代理列表URL（支持多个）
+proxy_list_urls:
+  - "https://raw.githubusercontent.com/r00tee/Proxy-List/main/Socks5.txt"
+  # 可以添加更多代理源
+  - "https://raw.githubusercontent.com/ClearProxy/checked-proxy-list/main/socks5/raw/all.txt"
+  # - "https://another-source.com/socks5.txt"
+
+# 健康检查并发数（同时测试多少个代理）
+health_check_concurrency: 200
+
+# 代理池更新间隔（分钟）
+update_interval_minutes: 5
+
+# 健康检查超时设置
+health_check:
+  # 总超时时间（秒）
+  total_timeout_seconds: 8
+  # TLS握手性能阈值（秒）
+  tls_handshake_threshold_seconds: 5
+  # 测活目标（可替换成更适合你的网络环境）
+  # target_address: "www.google.com:443"
+  # target_server_name: "www.google.com"
+
+# 服务器端口配置
+ports:
+  socks5_strict: ":17283"
+  socks5_relaxed: ":17284"
+  http_strict: ":17285"
+  http_relaxed: ":17286"
+
+# 日志
+logging:
+  # debug | info | warn | error
+  level: info
+
+# 本地代理认证（可选；HTTP 使用 Proxy-Authorization Basic；SOCKS5 使用用户名密码）
+auth:
+  username: ""
+  password: ""
+
+# 选择与重试策略
+selection:
+  # round_robin | random
+  strategy: round_robin
+  # 失败重试次数（每次换一个上游代理）
+  retries: 1
+  # 上游失败后临时禁用的起始退避（秒），随后指数递增
+  failure_backoff_seconds: 30
+  # 最大退避（秒）
+  max_backoff_seconds: 600
+  # 是否允许对非幂等请求重试（默认 false）
+  retry_non_idempotent: false
+
+# 管理接口（可选）
+admin:
+  enabled: false
+  addr: ":17287"

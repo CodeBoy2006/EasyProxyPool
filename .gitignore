@@ -1,0 +1,10 @@
+.DS_Store
+easyproxypool
+*.exe
+
+# Go build / test artifacts
+*.test
+*.out
+/.gocache/
+/.gomodcache/
+/.gopath/
