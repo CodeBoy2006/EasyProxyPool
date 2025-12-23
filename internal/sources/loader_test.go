@@ -46,6 +46,20 @@ proxies:
 	if len(res.SOCKS5Addrs) != 3 {
 		t.Fatalf("expected 3 socks5 addrs, got %d", len(res.SOCKS5Addrs))
 	}
+	want := map[string]bool{
+		"1.1.1.1:1080": true,
+		"2.2.2.2:1080": true, // socks5:// should be normalized
+		"3.3.3.3:1080": true,
+	}
+	for _, a := range res.SOCKS5Addrs {
+		if !want[a] {
+			t.Fatalf("unexpected addr %q", a)
+		}
+		delete(want, a)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing addrs: %+v", want)
+	}
 	if len(res.Specs) == 0 {
 		t.Fatalf("expected specs from clash yaml")
 	}
