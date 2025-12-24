@@ -73,14 +73,12 @@ type SelectionConfig struct {
 }
 
 type StickyConfig struct {
-	Enabled    bool `yaml:"enabled"`
-	TTLSeconds int  `yaml:"ttl_seconds"`
-	MaxEntries int  `yaml:"max_entries"`
+	Enabled bool `yaml:"enabled"`
 	// HeaderOverride controls whether request headers can override sticky behavior.
 	HeaderOverride *bool `yaml:"header_override"`
-	// Failover controls whether to switch and update mapping when the chosen upstream fails:
-	// - soft: switch to a new upstream and update the mapping
-	// - hard: keep mapping even on failures
+	// Failover controls how a request attempts another upstream on failure:
+	// - soft: try the next HRW-ranked upstream
+	// - hard: prefer staying on the top HRW-ranked upstream
 	Failover string `yaml:"failover"`
 }
 
@@ -194,12 +192,6 @@ func applyDefaults(cfg *Config) {
 	if cfg.Selection.MaxBackoffSeconds <= 0 {
 		cfg.Selection.MaxBackoffSeconds = 600
 	}
-	if cfg.Selection.Sticky.TTLSeconds <= 0 {
-		cfg.Selection.Sticky.TTLSeconds = 600
-	}
-	if cfg.Selection.Sticky.MaxEntries <= 0 {
-		cfg.Selection.Sticky.MaxEntries = 50000
-	}
 	if cfg.Selection.Sticky.HeaderOverride == nil {
 		b := true
 		cfg.Selection.Sticky.HeaderOverride = &b
@@ -272,14 +264,6 @@ func validate(cfg Config) error {
 	case "soft", "hard":
 	default:
 		return fmt.Errorf("selection.sticky.failover: unsupported %q (use soft or hard)", cfg.Selection.Sticky.Failover)
-	}
-	if cfg.Selection.Sticky.Enabled {
-		if cfg.Selection.Sticky.TTLSeconds <= 0 {
-			return fmt.Errorf("selection.sticky.ttl_seconds: must be > 0 when selection.sticky.enabled=true")
-		}
-		if cfg.Selection.Sticky.MaxEntries <= 0 {
-			return fmt.Errorf("selection.sticky.max_entries: must be > 0 when selection.sticky.enabled=true")
-		}
 	}
 
 	if cfg.Adapters.Xray.Enabled {

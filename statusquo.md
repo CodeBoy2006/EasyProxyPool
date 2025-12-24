@@ -39,3 +39,9 @@
 - **Status:** Completed
 - **Next Steps:** (Optional) Expose a safe way to discover `entry.Key()` (nodeID) for `X-EasyProxyPool-Upstream` without leaking secrets.
 - **Context:** Sticky selection applies only to HTTP proxy requests where `traceparent` is visible to the proxy (e.g. `curl --proxy-header` for CONNECT).
+
+## [2025-12-24 13:17] Replace sticky-map with Rendezvous (HRW) selection
+- **Changes:** Replaced the TTL sticky-map approach with session-key based Rendezvous (HRW) hashing over alive upstreams; session key can come from `Proxy-Authorization` username or `X-EasyProxyPool-Session` (fallback `traceparent`), and failures try the next-ranked upstream (retries).
+- **Status:** Completed
+- **Next Steps:** Consider adding an admin endpoint to list safe upstream keys (no secrets) to make `X-EasyProxyPool-Upstream` easier to use.
+- **Context:** `X-EasyProxyPool-Session` is only honored when `selection.sticky.header_override=true`; the header is stripped from forwarded requests.

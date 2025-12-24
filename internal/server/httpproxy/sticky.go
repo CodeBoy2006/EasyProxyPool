@@ -1,100 +1,24 @@
 package httpproxy
 
 import (
-	"container/list"
 	"errors"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/CodeBoy2006/EasyProxyPool/internal/config"
+	"github.com/CodeBoy2006/EasyProxyPool/internal/pool"
 )
 
 const (
-	headerSticky   = "X-EasyProxyPool-Sticky"
-	headerFailover = "X-EasyProxyPool-Failover"
-	headerUpstream = "X-EasyProxyPool-Upstream"
+	headerSticky      = "X-EasyProxyPool-Sticky"
+	headerFailover    = "X-EasyProxyPool-Failover"
+	headerUpstream    = "X-EasyProxyPool-Upstream"
+	headerSession     = "X-EasyProxyPool-Session"
+	headerTraceparent = "traceparent"
 )
 
-type stickyMap struct {
-	ttl        time.Duration
-	maxEntries int
-
-	mu    sync.Mutex
-	items map[string]*list.Element
-	lru   list.List // front = most recently accessed
-}
-
-type stickyItem struct {
-	traceID     string
-	upstreamKey string
-	expiresAt   time.Time
-}
-
-func newStickyMap(ttl time.Duration, maxEntries int) *stickyMap {
-	return &stickyMap{
-		ttl:        ttl,
-		maxEntries: maxEntries,
-		items:      make(map[string]*list.Element, maxEntries),
-	}
-}
-
-func (m *stickyMap) Get(traceID string, now time.Time) (string, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	el, ok := m.items[traceID]
-	if !ok {
-		return "", false
-	}
-	it := el.Value.(stickyItem)
-	if !it.expiresAt.IsZero() && !now.Before(it.expiresAt) {
-		m.lru.Remove(el)
-		delete(m.items, traceID)
-		return "", false
-	}
-	m.lru.MoveToFront(el)
-	return it.upstreamKey, true
-}
-
-func (m *stickyMap) Set(traceID, upstreamKey string, now time.Time) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	expiresAt := now.Add(m.ttl)
-	if el, ok := m.items[traceID]; ok {
-		el.Value = stickyItem{traceID: traceID, upstreamKey: upstreamKey, expiresAt: expiresAt}
-		m.lru.MoveToFront(el)
-	} else {
-		m.items[traceID] = m.lru.PushFront(stickyItem{traceID: traceID, upstreamKey: upstreamKey, expiresAt: expiresAt})
-	}
-
-	for len(m.items) > m.maxEntries {
-		back := m.lru.Back()
-		if back == nil {
-			break
-		}
-		it := back.Value.(stickyItem)
-		m.lru.Remove(back)
-		delete(m.items, it.traceID)
-	}
-}
-
-func (m *stickyMap) Delete(traceID string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	el, ok := m.items[traceID]
-	if !ok {
-		return
-	}
-	m.lru.Remove(el)
-	delete(m.items, traceID)
-}
-
 type requestStickyPolicy struct {
-	traceID     string
+	sessionKey  string
 	forceSticky *bool
 	failover    string
 	forceKey    string
@@ -147,42 +71,95 @@ func parseBoolLike(v string) (bool, bool) {
 	}
 }
 
+func sessionKeyFromRequest(allowHeaderOverride bool, r *http.Request) string {
+	if allowHeaderOverride {
+		if v := strings.TrimSpace(r.Header.Get(headerSession)); v != "" {
+			return v
+		}
+	}
+
+	user, _, ok := parseBasicAuth(r.Header.Get("Proxy-Authorization"))
+	if ok && strings.TrimSpace(user) != "" {
+		return user
+	}
+
+	if traceID, ok := parseTraceIDFromTraceparent(r.Header.Get(headerTraceparent)); ok {
+		return traceID
+	}
+
+	return ""
+}
+
 func stickyPolicyFromRequest(sel config.SelectionConfig, r *http.Request) (requestStickyPolicy, error) {
 	p := requestStickyPolicy{
 		failover: sel.Sticky.Failover,
 	}
 
-	traceID, ok := parseTraceIDFromTraceparent(r.Header.Get("traceparent"))
-	if ok {
-		p.traceID = traceID
-	}
-
 	headerOverride := sel.Sticky.HeaderOverride == nil || *sel.Sticky.HeaderOverride
-	if !headerOverride {
-		return p, nil
-	}
-
-	if v := strings.TrimSpace(r.Header.Get(headerUpstream)); v != "" {
-		p.forceKey = v
-	}
-
-	if v := strings.TrimSpace(r.Header.Get(headerSticky)); v != "" {
-		b, ok := parseBoolLike(v)
-		if !ok {
-			return requestStickyPolicy{}, errors.New("invalid X-EasyProxyPool-Sticky (use on/off)")
+	if headerOverride {
+		if v := strings.TrimSpace(r.Header.Get(headerUpstream)); v != "" {
+			p.forceKey = v
 		}
-		p.forceSticky = &b
-	}
-
-	if v := strings.TrimSpace(r.Header.Get(headerFailover)); v != "" {
-		v = strings.ToLower(v)
-		switch v {
-		case "soft", "hard":
-			p.failover = v
-		default:
-			return requestStickyPolicy{}, errors.New("invalid X-EasyProxyPool-Failover (use soft/hard)")
+		if v := strings.TrimSpace(r.Header.Get(headerSticky)); v != "" {
+			b, ok := parseBoolLike(v)
+			if !ok {
+				return requestStickyPolicy{}, errors.New("invalid X-EasyProxyPool-Sticky (use on/off)")
+			}
+			p.forceSticky = &b
+		}
+		if v := strings.TrimSpace(r.Header.Get(headerFailover)); v != "" {
+			v = strings.ToLower(v)
+			switch v {
+			case "soft", "hard":
+				p.failover = v
+			default:
+				return requestStickyPolicy{}, errors.New("invalid X-EasyProxyPool-Failover (use soft/hard)")
+			}
 		}
 	}
 
+	p.sessionKey = sessionKeyFromRequest(headerOverride, r)
 	return p, nil
+}
+
+func hrwScore(sessionKey, nodeKey string) uint64 {
+	const (
+		offset64 = 14695981039346656037
+		prime64  = 1099511628211
+	)
+	var h uint64 = offset64
+	for i := 0; i < len(sessionKey); i++ {
+		h ^= uint64(sessionKey[i])
+		h *= prime64
+	}
+	h ^= 0
+	h *= prime64
+	for i := 0; i < len(nodeKey); i++ {
+		h ^= uint64(nodeKey[i])
+		h *= prime64
+	}
+	return h
+}
+
+func pickRendezvous(candidates []pool.Entry, sessionKey string, exclude map[string]struct{}) (pool.Entry, bool) {
+	var best pool.Entry
+	var bestScore uint64
+	found := false
+
+	for i := range candidates {
+		k := candidates[i].Key()
+		if exclude != nil {
+			if _, ok := exclude[k]; ok {
+				continue
+			}
+		}
+		score := hrwScore(sessionKey, k)
+		if !found || score > bestScore {
+			best = candidates[i]
+			bestScore = score
+			found = true
+		}
+	}
+
+	return best, found
 }

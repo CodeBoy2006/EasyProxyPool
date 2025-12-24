@@ -34,7 +34,6 @@ type Server struct {
 	pool      *pool.Pool
 	auth      config.AuthConfig
 	selection config.SelectionConfig
-	sticky    *stickyMap
 
 	client *http.Client
 
@@ -51,9 +50,6 @@ func New(log *slog.Logger, addr string, mode Mode, p *pool.Pool, auth config.Aut
 		pool:      p,
 		auth:      auth,
 		selection: sel,
-	}
-	if sel.Sticky.Enabled {
-		s.sticky = newStickyMap(time.Duration(sel.Sticky.TTLSeconds)*time.Second, sel.Sticky.MaxEntries)
 	}
 
 	transport := &http.Transport{
@@ -184,9 +180,9 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	stickyEnabled := s.selection.Sticky.Enabled && s.sticky != nil && policy.traceID != ""
+	stickyEnabled := s.selection.Sticky.Enabled && strings.TrimSpace(policy.sessionKey) != ""
 	if policy.forceSticky != nil {
-		stickyEnabled = *policy.forceSticky && s.sticky != nil && policy.traceID != ""
+		stickyEnabled = *policy.forceSticky && strings.TrimSpace(policy.sessionKey) != ""
 	}
 
 	clientConn, _, err := hj.Hijack()
@@ -201,16 +197,11 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) error {
 		target += ":443"
 	}
 
-	now := time.Now()
-	mappedKey := ""
-	hasMapping := false
-	if stickyEnabled {
-		mappedKey, hasMapping = s.sticky.Get(policy.traceID, now)
-	}
+	attempted := map[string]struct{}{}
 
 	var lastErr error
 	for attempt := 0; attempt <= s.selection.Retries; attempt++ {
-		now = time.Now()
+		now := time.Now()
 		var entry pool.Entry
 		var ok bool
 		if strings.TrimSpace(policy.forceKey) != "" {
@@ -220,24 +211,12 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) error {
 				return errors.New("unknown upstream")
 			}
 		} else if stickyEnabled {
-			if hasMapping {
-				entry, ok = s.pool.Get(mappedKey, now)
-				if !ok {
-					entry, ok = s.pool.Next(s.selection.Strategy, now)
-					if ok && policy.failover == "soft" {
-						mappedKey = entry.Key()
-						hasMapping = true
-						s.sticky.Set(policy.traceID, mappedKey, now)
-					}
-				}
-			} else {
-				entry, ok = s.pool.Next(s.selection.Strategy, now)
-				if ok {
-					mappedKey = entry.Key()
-					hasMapping = true
-					s.sticky.Set(policy.traceID, mappedKey, now)
-				}
+			candidates := s.pool.Active(now)
+			var exclude map[string]struct{}
+			if policy.failover == "soft" {
+				exclude = attempted
 			}
+			entry, ok = pickRendezvous(candidates, policy.sessionKey, exclude)
 		} else {
 			entry, ok = s.pool.Next(s.selection.Strategy, now)
 		}
@@ -251,14 +230,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) error {
 			lastErr = err
 			s.pool.MarkFailure(entry.Key(), now, time.Duration(s.selection.FailureBackoffSeconds)*time.Second, time.Duration(s.selection.MaxBackoffSeconds)*time.Second)
 			if stickyEnabled && policy.failover == "soft" && strings.TrimSpace(policy.forceKey) == "" {
-				if replacement, ok := s.pool.Next(s.selection.Strategy, now); ok {
-					mappedKey = replacement.Key()
-					hasMapping = true
-					s.sticky.Set(policy.traceID, mappedKey, now)
-				} else {
-					s.sticky.Delete(policy.traceID)
-					hasMapping = false
-				}
+				attempted[entry.Key()] = struct{}{}
 			}
 			continue
 		}
@@ -299,28 +271,24 @@ func (s *Server) handleForward(w http.ResponseWriter, r *http.Request) (int, err
 		return http.StatusBadRequest, err
 	}
 
-	stickyEnabled := s.selection.Sticky.Enabled && s.sticky != nil && policy.traceID != ""
+	stickyEnabled := s.selection.Sticky.Enabled && strings.TrimSpace(policy.sessionKey) != ""
 	if policy.forceSticky != nil {
-		stickyEnabled = *policy.forceSticky && s.sticky != nil && policy.traceID != ""
+		stickyEnabled = *policy.forceSticky && strings.TrimSpace(policy.sessionKey) != ""
 	}
 
 	stripHopByHopHeaders(outReq.Header)
 	outReq.Header.Del(headerSticky)
 	outReq.Header.Del(headerFailover)
 	outReq.Header.Del(headerUpstream)
+	outReq.Header.Del(headerSession)
 
 	retryable := isRetryableRequest(outReq, s.selection.RetryNonIdempotent)
 	var lastErr error
 
-	now := time.Now()
-	mappedKey := ""
-	hasMapping := false
-	if stickyEnabled {
-		mappedKey, hasMapping = s.sticky.Get(policy.traceID, now)
-	}
+	attempted := map[string]struct{}{}
 
 	for attempt := 0; attempt <= s.selection.Retries; attempt++ {
-		now = time.Now()
+		now := time.Now()
 		var entry pool.Entry
 		var ok bool
 		if strings.TrimSpace(policy.forceKey) != "" {
@@ -330,24 +298,12 @@ func (s *Server) handleForward(w http.ResponseWriter, r *http.Request) (int, err
 				return http.StatusBadRequest, errors.New("unknown upstream")
 			}
 		} else if stickyEnabled {
-			if hasMapping {
-				entry, ok = s.pool.Get(mappedKey, now)
-				if !ok {
-					entry, ok = s.pool.Next(s.selection.Strategy, now)
-					if ok && policy.failover == "soft" {
-						mappedKey = entry.Key()
-						hasMapping = true
-						s.sticky.Set(policy.traceID, mappedKey, now)
-					}
-				}
-			} else {
-				entry, ok = s.pool.Next(s.selection.Strategy, now)
-				if ok {
-					mappedKey = entry.Key()
-					hasMapping = true
-					s.sticky.Set(policy.traceID, mappedKey, now)
-				}
+			candidates := s.pool.Active(now)
+			var exclude map[string]struct{}
+			if policy.failover == "soft" {
+				exclude = attempted
 			}
+			entry, ok = pickRendezvous(candidates, policy.sessionKey, exclude)
 		} else {
 			entry, ok = s.pool.Next(s.selection.Strategy, now)
 		}
@@ -362,14 +318,7 @@ func (s *Server) handleForward(w http.ResponseWriter, r *http.Request) (int, err
 			lastErr = err
 			s.pool.MarkFailure(entry.Key(), now, time.Duration(s.selection.FailureBackoffSeconds)*time.Second, time.Duration(s.selection.MaxBackoffSeconds)*time.Second)
 			if stickyEnabled && policy.failover == "soft" && strings.TrimSpace(policy.forceKey) == "" {
-				if replacement, ok := s.pool.Next(s.selection.Strategy, now); ok {
-					mappedKey = replacement.Key()
-					hasMapping = true
-					s.sticky.Set(policy.traceID, mappedKey, now)
-				} else {
-					s.sticky.Delete(policy.traceID)
-					hasMapping = false
-				}
+				attempted[entry.Key()] = struct{}{}
 			}
 			if retryable && attempt < s.selection.Retries {
 				continue

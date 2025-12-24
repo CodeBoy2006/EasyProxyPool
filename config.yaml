@@ -62,16 +62,16 @@ selection:
   max_backoff_seconds: 600
   # 是否允许对非幂等请求重试（默认 false）
   retry_non_idempotent: false
-  # 基于 W3C traceparent 的粘性上游选择（可选；主要用于“同一 trace 固定出口 IP”）
+  # 粘性上游选择（可选；用于“同一会话固定出口 IP”）
+  # 会话 key 来源（优先级从高到低）：
+  # 1) X-EasyProxyPool-Session（需要 sticky.header_override=true）
+  # 2) Proxy-Authorization Basic username
+  # 3) traceparent trace-id（兜底）
   sticky:
     enabled: false
-    # trace → upstream 映射保留时间（秒）
-    ttl_seconds: 600
-    # 最大映射条目数（防止内存无限增长）
-    max_entries: 50000
     # 是否允许通过请求头覆盖 sticky 行为（X-EasyProxyPool-*）
     header_override: true
-    # 节点失败时是否更新映射：soft=切换并更新；hard=本次可切换但不更新映射
+    # failover 策略：soft=失败后尝试下一名；hard=尽量保持第一名（除非被禁用）
     failover: soft
 
 # 管理接口（可选）

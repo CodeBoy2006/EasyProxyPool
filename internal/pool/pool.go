@@ -124,6 +124,21 @@ func (p *Pool) Get(key string, now time.Time) (Entry, bool) {
 	return e, true
 }
 
+func (p *Pool) Active(now time.Time) []Entry {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	out := make([]Entry, 0, len(p.entries))
+	for i := range p.entries {
+		e := p.entries[i]
+		if !e.disabledUntil.IsZero() && now.Before(e.disabledUntil) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
 func (p *Pool) MarkSuccess(addr string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

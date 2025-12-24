@@ -12,7 +12,7 @@ It continuously fetches proxy lists from multiple sources, health-checks them, a
 - Concurrent health checks with latency thresholding
 - Single pool with SOCKS5 + HTTP listeners
 - Per-request upstream selection (`round_robin` or `random`)
-- Optional sticky upstream selection keyed by `traceparent` (HTTP proxy only)
+- Optional sticky upstream selection via session key (HTTP proxy only)
 - Retries with exponential backoff + temporary upstream disable on failures
 - Optional authentication:
   - HTTP: `Proxy-Authorization: Basic ...`
@@ -79,15 +79,22 @@ Key options:
 - `health_check.*`: timeouts + TLS handshake target and threshold
 - `ports.*`: listening addresses for the local proxies
 - `selection.*`: upstream selection + retries/backoff behavior
-- `selection.sticky.*`: trace-based sticky upstream selection (optional)
+- `selection.sticky.*`: session-key sticky upstream selection (optional)
 - `auth.*`: enable proxy auth (recommended if binding to non-local interfaces)
 - `admin.*`: optional status API
 - `adapters.xray.*`: enable xray-core adapter for Clash-style nodes (optional; default disabled)
 
-### Trace-based sticky egress (HTTP proxy only)
+### Session-key sticky egress (HTTP proxy only)
 
-If you want to pin a "trace" to a fixed egress IP (upstream node), enable `selection.sticky` and send a W3C
-`traceparent` header. EasyProxyPool will map `trace-id -> upstream` in-memory (TTL + max entries).
+If you want to pin a "session" to a fixed egress IP (upstream node), enable `selection.sticky`.
+EasyProxyPool will use **Rendezvous (HRW) hashing** over the current alive upstream set, so when nodes
+appear/disappear, most sessions keep their existing mapping.
+
+Session key sources (highest priority first):
+
+1) `X-EasyProxyPool-Session` (when `selection.sticky.header_override=true`)
+2) `Proxy-Authorization` Basic username
+3) W3C `traceparent` trace-id (fallback)
 
 Per-request overrides (optional; controlled by `selection.sticky.header_override`):
 
@@ -100,12 +107,12 @@ Examples:
 ```bash
 # HTTPS via CONNECT (send headers to proxy)
 curl -x http://127.0.0.1:17285 \
-  --proxy-header 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
+  --proxy-header 'X-EasyProxyPool-Session: s-123' \
   https://api.ipify.org
 
-# Disable sticky for this request
+# Or: use traceparent as a session key fallback
 curl -x http://127.0.0.1:17285 \
-  --proxy-header 'X-EasyProxyPool-Sticky: off' \
+  --proxy-header 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
   https://api.ipify.org
 ```
 

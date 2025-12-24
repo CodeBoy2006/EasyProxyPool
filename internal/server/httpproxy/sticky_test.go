@@ -1,11 +1,12 @@
 package httpproxy
 
 import (
+	"encoding/base64"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/CodeBoy2006/EasyProxyPool/internal/config"
+	"github.com/CodeBoy2006/EasyProxyPool/internal/pool"
 )
 
 func TestParseTraceIDFromTraceparent(t *testing.T) {
@@ -34,48 +35,16 @@ func TestParseTraceIDFromTraceparent(t *testing.T) {
 	})
 }
 
-func TestStickyMap_TTLAndEviction(t *testing.T) {
-	m := newStickyMap(10*time.Second, 2)
-	t0 := time.Unix(1000, 0)
-
-	m.Set("t1", "u1", t0)
-	m.Set("t2", "u2", t0)
-
-	if got, ok := m.Get("t1", t0.Add(5*time.Second)); !ok || got != "u1" {
-		t.Fatalf("expected t1=u1, got %q ok=%v", got, ok)
-	}
-
-	// Touch t1 so t2 becomes least-recently-used.
-	_, _ = m.Get("t1", t0.Add(6*time.Second))
-
-	m.Set("t3", "u3", t0.Add(7*time.Second))
-
-	if _, ok := m.Get("t2", t0.Add(7*time.Second)); ok {
-		t.Fatalf("expected t2 to be evicted")
-	}
-
-	if got, ok := m.Get("t1", t0.Add(7*time.Second)); !ok || got != "u1" {
-		t.Fatalf("expected t1=u1 still present, got %q ok=%v", got, ok)
-	}
-
-	if got, ok := m.Get("t3", t0.Add(7*time.Second)); !ok || got != "u3" {
-		t.Fatalf("expected t3=u3, got %q ok=%v", got, ok)
-	}
-
-	if _, ok := m.Get("t1", t0.Add(11*time.Second)); ok {
-		t.Fatalf("expected t1 to expire")
-	}
-}
-
 func TestStickyPolicyFromRequest(t *testing.T) {
 	truePtr := func() *bool { b := true; return &b }()
 	falsePtr := func() *bool { b := false; return &b }()
 
-	t.Run("override_disabled_ignores_headers", func(t *testing.T) {
+	t.Run("override_disabled_ignores_override_headers", func(t *testing.T) {
 		req, _ := http.NewRequest("GET", "http://example.com", nil)
 		req.Header.Set(headerSticky, "off")
 		req.Header.Set(headerFailover, "hard")
 		req.Header.Set(headerUpstream, "node-1")
+		req.Header.Set(headerSession, "hdr-1")
 
 		p, err := stickyPolicyFromRequest(config.SelectionConfig{
 			Sticky: config.StickyConfig{
@@ -87,7 +56,10 @@ func TestStickyPolicyFromRequest(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if p.forceSticky != nil || p.failover != "soft" || p.forceKey != "" {
-			t.Fatalf("expected headers ignored, got %+v", p)
+			t.Fatalf("expected override headers ignored, got %+v", p)
+		}
+		if p.sessionKey == "hdr-1" {
+			t.Fatalf("expected session header to be ignored when header_override=false")
 		}
 	})
 
@@ -104,4 +76,67 @@ func TestStickyPolicyFromRequest(t *testing.T) {
 			t.Fatalf("expected error")
 		}
 	})
+
+	t.Run("session_key_from_proxy_auth_username", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "http://example.com", nil)
+		req.Header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("sess-1:pw")))
+		p, err := stickyPolicyFromRequest(config.SelectionConfig{
+			Sticky: config.StickyConfig{
+				HeaderOverride: truePtr,
+				Failover:       "soft",
+			},
+		}, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if p.sessionKey != "sess-1" {
+			t.Fatalf("unexpected sessionKey: %q", p.sessionKey)
+		}
+	})
+
+	t.Run("session_key_from_header", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "http://example.com", nil)
+		req.Header.Set(headerSession, "hdr-2")
+		p, err := stickyPolicyFromRequest(config.SelectionConfig{
+			Sticky: config.StickyConfig{
+				HeaderOverride: truePtr,
+				Failover:       "soft",
+			},
+		}, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if p.sessionKey != "hdr-2" {
+			t.Fatalf("unexpected sessionKey: %q", p.sessionKey)
+		}
+	})
+}
+
+func TestPickRendezvous_StableAndExclude(t *testing.T) {
+	candidates := []pool.Entry{
+		{ID: "n1"},
+		{ID: "n2"},
+		{ID: "n3"},
+	}
+
+	best1, ok := pickRendezvous(candidates, "sess", nil)
+	if !ok {
+		t.Fatalf("expected ok")
+	}
+	best2, ok := pickRendezvous(candidates, "sess", nil)
+	if !ok {
+		t.Fatalf("expected ok")
+	}
+	if best1.Key() != best2.Key() {
+		t.Fatalf("expected stable pick, got %q vs %q", best1.Key(), best2.Key())
+	}
+
+	exclude := map[string]struct{}{best1.Key(): {}}
+	second, ok := pickRendezvous(candidates, "sess", exclude)
+	if !ok {
+		t.Fatalf("expected ok")
+	}
+	if second.Key() == best1.Key() {
+		t.Fatalf("expected different pick when excluding best")
+	}
 }
