@@ -14,8 +14,7 @@ type Status struct {
 	LastUpdateEnd   time.Time
 	LastUpdateErr   string
 	LastFetched     int
-	LastStrict      int
-	LastRelaxed     int
+	LastPool        int
 
 	LastDetails UpdateDetails
 
@@ -32,7 +31,6 @@ type UpdateDetails struct {
 	ProblemsCount int
 	SkippedByType map[string]int
 
-	XrayStrictHash  string
 	XrayRelaxedHash string
 
 	FallbackUsed bool
@@ -49,13 +47,12 @@ func (s *Status) SetStart(t time.Time) {
 	s.LastUpdateStart = t
 }
 
-func (s *Status) SetEnd(t time.Time, fetched, strict, relaxed int, err error, details UpdateDetails) {
+func (s *Status) SetEnd(t time.Time, fetched, poolSize int, err error, details UpdateDetails) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.LastUpdateEnd = t
 	s.LastFetched = fetched
-	s.LastStrict = strict
-	s.LastRelaxed = relaxed
+	s.LastPool = poolSize
 	s.LastDetails = cloneDetails(details)
 	if err != nil {
 		s.LastUpdateErr = err.Error()
@@ -72,8 +69,7 @@ func (s *Status) Snapshot() Status {
 		LastUpdateEnd:   s.LastUpdateEnd,
 		LastUpdateErr:   s.LastUpdateErr,
 		LastFetched:     s.LastFetched,
-		LastStrict:      s.LastStrict,
-		LastRelaxed:     s.LastRelaxed,
+		LastPool:        s.LastPool,
 		LastDetails:     cloneDetails(s.LastDetails),
 
 		LastNodeHealthRelaxedAt: s.LastNodeHealthRelaxedAt,

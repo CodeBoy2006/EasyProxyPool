@@ -23,9 +23,8 @@ type Updater struct {
 	log *slog.Logger
 	cfg config.Config
 
-	strictPool  *pool.Pool
-	relaxedPool *pool.Pool
-	status      *Status
+	pool   *pool.Pool
+	status *Status
 
 	fetcher     *fetcher.Fetcher
 	checker     *health.Checker
@@ -37,14 +36,13 @@ type Updater struct {
 	wg     sync.WaitGroup
 }
 
-func NewUpdater(log *slog.Logger, cfg config.Config, strictPool, relaxedPool *pool.Pool, status *Status) *Updater {
+func NewUpdater(log *slog.Logger, cfg config.Config, p *pool.Pool, status *Status) *Updater {
 	u := &Updater{
-		log:         log,
-		cfg:         cfg,
-		strictPool:  strictPool,
-		relaxedPool: relaxedPool,
-		status:      status,
-		fetcher:     fetcher.New(log),
+		log:     log,
+		cfg:     cfg,
+		pool:    p,
+		status:  status,
+		fetcher: fetcher.New(log),
 		checker: health.New(
 			log,
 			cfg.HealthCheck.TargetAddress,
@@ -112,11 +110,11 @@ func (u *Updater) Stop(ctx context.Context) {
 }
 
 func (u *Updater) runOnce(ctx context.Context) {
-	if !u.strictPool.UpdatingCAS() {
+	if !u.pool.UpdatingCAS() {
 		u.log.Info("update already in progress; skipping")
 		return
 	}
-	defer u.strictPool.UpdatingClear()
+	defer u.pool.UpdatingClear()
 
 	start := time.Now()
 	u.status.SetStart(start)
@@ -140,7 +138,7 @@ func (u *Updater) runOnceXray(ctx context.Context, start time.Time) {
 			u.runOnceLegacy(ctx, start, UpdateDetails{Adapter: "xray_fallback", FallbackUsed: true, FallbackErr: err.Error()})
 			return
 		}
-		u.status.SetEnd(time.Now(), 0, 0, 0, err, UpdateDetails{Adapter: "xray"})
+		u.status.SetEnd(time.Now(), 0, 0, err, UpdateDetails{Adapter: "xray"})
 		u.log.Warn("load specs failed", "err", err)
 		return
 	}
@@ -159,7 +157,7 @@ func (u *Updater) runOnceXray(ctx context.Context, start time.Time) {
 			u.runOnceLegacy(ctx, start, UpdateDetails{Adapter: "xray_fallback", NodesTotal: len(specs), ProblemsCount: len(res.Problems), SkippedByType: res.Skipped, FallbackUsed: true, FallbackErr: err.Error()})
 			return
 		}
-		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray"})
+		u.status.SetEnd(time.Now(), len(specs), 0, err, UpdateDetails{Adapter: "xray"})
 		u.log.Warn("xray config (relaxed) failed", "err", err)
 		return
 	}
@@ -177,7 +175,7 @@ func (u *Updater) runOnceXray(ctx context.Context, start time.Time) {
 			})
 			return
 		}
-		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray", XrayRelaxedHash: genRelaxed.Hash})
+		u.status.SetEnd(time.Now(), len(specs), 0, err, UpdateDetails{Adapter: "xray", XrayRelaxedHash: genRelaxed.Hash})
 		u.log.Warn("xray ensure relaxed failed", "err", err)
 		return
 	}
@@ -189,18 +187,18 @@ func (u *Updater) runOnceXray(ctx context.Context, start time.Time) {
 			u.runOnceLegacy(ctx, start, UpdateDetails{Adapter: "xray_fallback", XrayRelaxedHash: genRelaxed.Hash, FallbackUsed: true, FallbackErr: err.Error()})
 			return
 		}
-		u.status.SetEnd(time.Now(), len(specs), 0, 0, err, UpdateDetails{Adapter: "xray", XrayRelaxedHash: genRelaxed.Hash})
+		u.status.SetEnd(time.Now(), len(specs), 0, err, UpdateDetails{Adapter: "xray", XrayRelaxedHash: genRelaxed.Hash})
 		u.log.Warn("metrics relaxed failed", "err", err)
 		return
 	}
 
 	now := time.Now()
 	u.status.SetRelaxedNodeHealth(now, hr)
-	relaxedEntries := make([]pool.Entry, 0, len(genRelaxed.Included))
+	entries := make([]pool.Entry, 0, len(genRelaxed.Included))
 
 	for _, id := range genRelaxed.Included {
 		if h, ok := hr[id]; ok && h.Alive {
-			relaxedEntries = append(relaxedEntries, pool.Entry{
+			entries = append(entries, pool.Entry{
 				ID:            id,
 				Addr:          u.cfg.Adapters.Xray.SOCKSListenRelaxed,
 				Username:      id,
@@ -211,16 +209,10 @@ func (u *Updater) runOnceXray(ctx context.Context, start time.Time) {
 		}
 	}
 
-	if len(relaxedEntries) > 0 {
-		u.relaxedPool.Update(relaxedEntries)
+	if len(entries) > 0 {
+		u.pool.Update(entries)
 	} else {
-		u.log.Warn("relaxed pool empty; keeping existing")
-	}
-
-	if u.strictPool != u.relaxedPool {
-		if len(relaxedEntries) > 0 {
-			u.strictPool.Update(relaxedEntries)
-		}
+		u.log.Warn("pool empty; keeping existing")
 	}
 
 	details := UpdateDetails{
@@ -231,11 +223,11 @@ func (u *Updater) runOnceXray(ctx context.Context, start time.Time) {
 		SkippedByType:   mergeSkipped(genRelaxed.Skipped, res.Skipped),
 		XrayRelaxedHash: genRelaxed.Hash,
 	}
-	u.status.SetEnd(time.Now(), len(specs), len(relaxedEntries), len(relaxedEntries), nil, details)
+	u.status.SetEnd(time.Now(), len(specs), len(entries), nil, details)
 	u.log.Info("update complete",
 		"adapter", "xray",
 		"nodes", len(specs),
-		"relaxed", len(relaxedEntries),
+		"pool", len(entries),
 		"took", time.Since(start).String(),
 	)
 }
@@ -243,7 +235,7 @@ func (u *Updater) runOnceXray(ctx context.Context, start time.Time) {
 func (u *Updater) runOnceLegacy(ctx context.Context, start time.Time, details UpdateDetails) {
 	proxies, err := u.loadSOCKS5Upstreams(ctx)
 	if err != nil {
-		u.status.SetEnd(time.Now(), 0, 0, 0, err, details)
+		u.status.SetEnd(time.Now(), 0, 0, err, details)
 		u.log.Warn("fetch failed", "adapter", details.Adapter, "err", err)
 		return
 	}
@@ -274,39 +266,33 @@ func (u *Updater) runOnceLegacy(ctx context.Context, start time.Time, details Up
 	wg.Wait()
 	close(results)
 
-	relaxedEntries := make([]pool.Entry, 0)
+	entries := make([]pool.Entry, 0)
 	now := time.Now()
 
-	seenRelaxed := make(map[string]struct{})
+	seen := make(map[string]struct{})
 	for r := range results {
-		if _, ok := seenRelaxed[r.addr]; ok {
+		if _, ok := seen[r.addr]; ok {
 			continue
 		}
-		seenRelaxed[r.addr] = struct{}{}
-		relaxedEntries = append(relaxedEntries, pool.Entry{
+		seen[r.addr] = struct{}{}
+		entries = append(entries, pool.Entry{
 			Addr:          r.addr,
 			Latency:       r.latency,
 			LastCheckedAt: now,
 		})
 	}
 
-	if len(relaxedEntries) > 0 {
-		u.relaxedPool.Update(relaxedEntries)
+	if len(entries) > 0 {
+		u.pool.Update(entries)
 	} else {
-		u.log.Warn("relaxed pool empty; keeping existing")
+		u.log.Warn("pool empty; keeping existing")
 	}
 
-	if u.strictPool != u.relaxedPool {
-		if len(relaxedEntries) > 0 {
-			u.strictPool.Update(relaxedEntries)
-		}
-	}
-
-	u.status.SetEnd(time.Now(), len(proxies), len(relaxedEntries), len(relaxedEntries), nil, details)
+	u.status.SetEnd(time.Now(), len(proxies), len(entries), nil, details)
 	u.log.Info("update complete",
 		"adapter", details.Adapter,
 		"fetched", len(proxies),
-		"relaxed", len(relaxedEntries),
+		"pool", len(entries),
 		"took", time.Since(start).String(),
 	)
 }

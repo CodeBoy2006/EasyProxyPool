@@ -45,7 +45,7 @@ func main() {
 
 	status := orchestrator.NewStatus()
 
-	updater := orchestrator.NewUpdater(logger, cfg, mainPool, mainPool, status)
+	updater := orchestrator.NewUpdater(logger, cfg, mainPool, status)
 	updater.Start(ctx)
 
 	if cfg.Admin.Enabled && cfg.Admin.Addr != "" {
@@ -54,7 +54,7 @@ func main() {
 		if cfg.Admin.SSEHeartbeatSeconds != nil && *cfg.Admin.SSEHeartbeatSeconds > 0 {
 			heartbeat = time.Duration(*cfg.Admin.SSEHeartbeatSeconds) * time.Second
 		}
-		adminServer := admin.New(logger, cfg.Admin.Addr, status, mainPool, mainPool, admin.Options{
+		adminServer := admin.New(logger, cfg.Admin.Addr, status, mainPool, admin.Options{
 			Auth:          cfg.Admin.Auth,
 			StartedAt:     startedAt,
 			UIEnabled:     uiEnabled,

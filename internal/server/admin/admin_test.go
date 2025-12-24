@@ -53,7 +53,7 @@ func TestAdminAuth_SharedToken(t *testing.T) {
 	p := pool.New("pool", log)
 	buf := logging.NewLogBuffer(10)
 
-	s := New(log, ":0", status, p, p, Options{
+	s := New(log, ":0", status, p, Options{
 		Auth: config.AdminAuthConfig{
 			Mode:  "shared_token",
 			Token: "t",
@@ -101,7 +101,7 @@ func TestAdminNodesEndpoint_UsesStatusSnapshot(t *testing.T) {
 		"n2": {Alive: false, Delay: 0},
 	})
 
-	s := New(log, ":0", status, p, p, Options{
+	s := New(log, ":0", status, p, Options{
 		Auth: config.AdminAuthConfig{
 			Mode:  "shared_token",
 			Token: "t",
@@ -137,7 +137,7 @@ func TestAdminSSE_ConnectionLimit429(t *testing.T) {
 	buf := logging.NewLogBuffer(10)
 	buf.Append(logging.LogEvent{Time: time.Unix(1, 0), Level: slog.LevelInfo, Message: "hello"})
 
-	s := New(log, ":0", status, p, p, Options{
+	s := New(log, ":0", status, p, Options{
 		Auth: config.AdminAuthConfig{
 			Mode:  "shared_token",
 			Token: "t",
@@ -204,7 +204,7 @@ func TestAdminUI_ServesIndex(t *testing.T) {
 	status := orchestrator.NewStatus()
 	p := pool.New("pool", log)
 
-	s := New(log, ":0", status, p, p, Options{
+	s := New(log, ":0", status, p, Options{
 		Auth:          config.AdminAuthConfig{Mode: "disabled"},
 		UIEnabled:     true,
 		LogBuffer:     logging.NewLogBuffer(10),
@@ -227,7 +227,7 @@ func TestAdminUI_ServesAssets(t *testing.T) {
 	status := orchestrator.NewStatus()
 	p := pool.New("pool", log)
 
-	s := New(log, ":0", status, p, p, Options{
+	s := New(log, ":0", status, p, Options{
 		Auth:          config.AdminAuthConfig{Mode: "disabled"},
 		UIEnabled:     true,
 		LogBuffer:     logging.NewLogBuffer(10),

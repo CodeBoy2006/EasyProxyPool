@@ -129,3 +129,9 @@
 - **Status:** Completed
 - **Next Steps:** Rebuild the binary and retry opening `http://127.0.0.1:17287/ui/` after "admin listening" appears.
 - **Context:** Previously `http.StripPrefix("/ui/", ...)` could produce an empty path for `/ui/`, causing a redirect loop; now paths are normalized.
+
+## [2025-12-24 19:01] Simplify admin status: single pool
+- **Changes:** Removed strict/relaxed dual-pool plumbing and switched admin `/api/status` + UI to show a single `pool` only.
+- **Status:** Completed
+- **Next Steps:** Rebuild and retry `http://127.0.0.1:17287/ui/` after the log line `admin listening` appears.
+- **Context:** If you interrupt startup (Ctrl-C) before the initial update finishes, ctx is already canceled and the admin server may start then immediately shut down.

@@ -144,11 +144,8 @@
     updaterSummary.textContent =
       `last_start=${up.LastUpdateStart || ""} last_end=${up.LastUpdateEnd || ""} ` +
       `err=${up.LastUpdateErr || "none"} fetched=${up.LastFetched ?? ""}`;
-    const sp = st.strict_pool || {};
-    const rp = st.relaxed_pool || {};
-    poolSummary.textContent =
-      `strict(total=${sp.Total ?? ""} disabled=${sp.Disabled ?? ""}) ` +
-      `relaxed(total=${rp.Total ?? ""} disabled=${rp.Disabled ?? ""})`;
+    const p = st.pool || {};
+    poolSummary.textContent = `pool(total=${p.Total ?? ""} disabled=${p.Disabled ?? ""})`;
   }
 
   async function refreshNodes() {
@@ -265,4 +262,3 @@
   setInterval(() => refreshNodes().catch(() => {}), 6000);
   connect();
 })();
-

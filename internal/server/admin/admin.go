@@ -40,9 +40,8 @@ type Server struct {
 	log *slog.Logger
 	srv *http.Server
 
-	status      *orchestrator.Status
-	strictPool  *pool.Pool
-	relaxedPool *pool.Pool
+	status *orchestrator.Status
+	pool   *pool.Pool
 
 	auth      config.AdminAuthConfig
 	startedAt time.Time
@@ -53,7 +52,7 @@ type Server struct {
 	sseHeartbeat time.Duration
 }
 
-func New(log *slog.Logger, addr string, status *orchestrator.Status, strictPool, relaxedPool *pool.Pool, opt Options) *Server {
+func New(log *slog.Logger, addr string, status *orchestrator.Status, p *pool.Pool, opt Options) *Server {
 	maxSSE := opt.MaxSSEClients
 	if maxSSE <= 0 {
 		maxSSE = 10
@@ -61,8 +60,7 @@ func New(log *slog.Logger, addr string, status *orchestrator.Status, strictPool,
 	s := &Server{
 		log:          log,
 		status:       status,
-		strictPool:   strictPool,
-		relaxedPool:  relaxedPool,
+		pool:         p,
 		auth:         opt.Auth,
 		startedAt:    opt.StartedAt,
 		logBuf:       opt.LogBuffer,
@@ -114,8 +112,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	resp := map[string]any{
 		"updater":         s.status.Snapshot(),
-		"strict_pool":     s.strictPool.Stats(now),
-		"relaxed_pool":    s.relaxedPool.Stats(now),
+		"pool":            s.pool.Stats(now),
 		"server_time_utc": now.UTC().Format(time.RFC3339),
 	}
 
