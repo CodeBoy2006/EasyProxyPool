@@ -57,3 +57,21 @@
 - **Status:** Completed
 - **Next Steps:** Add new issues rows as new work is defined.
 - **Context:** File kept as UTF-8 with BOM for Excel compatibility.
+
+## [2025-12-24 14:41] Web Dashboard Plan
+- **Changes:** Added implementation plan document for lightweight web dashboard (status/stats/live logs/node health).
+- **Status:** Completed
+- **Next Steps:** Follow the plan phases; start by finalizing MVP scope + security defaults, then extend admin API and add SSE log streaming.
+- **Context:** Plan assumes reuse of existing admin server (/healthz, /status) and xray node health (/debug/vars) with strict data sanitization.
+
+## [2025-12-24 14:45] Update Web Dashboard Plan: Add Auth
+- **Changes:** Updated the web dashboard plan to include simple WebUI authentication (recommended shared token; SSE constraints considered).
+- **Status:** Completed
+- **Next Steps:** Implement admin auth middleware and shared-token flow first, then protect UI/API/SSE endpoints and document safe defaults.
+- **Context:** Browser EventSource can’t set headers, so token-in-query (or cookie) is required for SSE; ensure tokens never appear in logs.
+
+## [2025-12-24 14:48] Generate issues CSV: Web dashboard
+- **Changes:** Generated issues tracking CSV for the lightweight web dashboard plan (8 tasks) and updated issues/issues.csv (UTF-8 BOM).
+- **Status:** Completed
+- **Next Steps:** Assign owners and start with WEBUI-010 (admin auth + API), then WEBUI-030 (SSE logs) and WEBUI-040 (UI).
+- **Context:** CSV derived from plan/2025-12-24_14-39-49-lightweight-web-dashboard.md; includes explicit acceptance/review/test MCP per task.
