@@ -117,3 +117,9 @@
 - **Status:** Completed
 - **Next Steps:** Fill in the remaining scope/security boundary doc (WEBUI-000).
 - **Context:** Heartbeat behavior is covered by unit tests; runtime still requires local execution because sandbox blocks TCP listeners.
+
+## [2025-12-24 15:26] [WEBUI-000] Dashboard scope + security boundary doc
+- **Changes:** Added `docs/admin-dashboard.md` to define MVP scope, refresh targets, redaction rules, and default-safe behavior; changed default admin bind to loopback.
+- **Status:** Completed
+- **Next Steps:** None.
+- **Context:** Admin is disabled by default; if enabling on non-loopback interfaces, always enable auth and restrict network access.

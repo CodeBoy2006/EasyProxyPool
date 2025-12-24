@@ -217,7 +217,7 @@ func applyDefaults(cfg *Config) {
 		cfg.Logging.Level = "info"
 	}
 	if cfg.Admin.Addr == "" {
-		cfg.Admin.Addr = ":17287"
+		cfg.Admin.Addr = "127.0.0.1:17287"
 	}
 	if cfg.Admin.UIEnabled == nil {
 		b := true

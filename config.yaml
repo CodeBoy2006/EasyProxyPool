@@ -82,7 +82,7 @@ selection:
 # 管理接口（可选）
 admin:
   enabled: false
-  addr: ":17287"
+  addr: "127.0.0.1:17287"
   # 是否启用内置 Web 仪表盘（/ui/，默认 true）
   ui_enabled: true
   # 为 SSE 日志流保留的内存日志条数（0=禁用日志缓冲；默认 2000）

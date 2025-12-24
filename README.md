@@ -175,7 +175,7 @@ Notes:
 
 ## Admin API / Dashboard (optional)
 
-Enable `admin.enabled: true` (default addr `:17287`).
+Enable `admin.enabled: true` (default addr `127.0.0.1:17287`).
 
 Endpoints:
 

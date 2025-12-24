@@ -173,7 +173,7 @@ adapters:
 
 ## 管理接口 / 仪表盘（可选）
 
-在 `config.yaml` 中设置 `admin.enabled: true`（默认端口 `:17287`）。
+在 `config.yaml` 中设置 `admin.enabled: true`（默认地址 `127.0.0.1:17287`）。
 
 接口列表：
 
