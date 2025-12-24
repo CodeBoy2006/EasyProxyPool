@@ -62,6 +62,17 @@ selection:
   max_backoff_seconds: 600
   # 是否允许对非幂等请求重试（默认 false）
   retry_non_idempotent: false
+  # 基于 W3C traceparent 的粘性上游选择（可选；主要用于“同一 trace 固定出口 IP”）
+  sticky:
+    enabled: false
+    # trace → upstream 映射保留时间（秒）
+    ttl_seconds: 600
+    # 最大映射条目数（防止内存无限增长）
+    max_entries: 50000
+    # 是否允许通过请求头覆盖 sticky 行为（X-EasyProxyPool-*）
+    header_override: true
+    # 节点失败时是否更新映射：soft=切换并更新；hard=本次可切换但不更新映射
+    failover: soft
 
 # 管理接口（可选）
 admin:

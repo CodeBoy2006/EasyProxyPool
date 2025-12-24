@@ -109,6 +109,21 @@ func (p *Pool) Next(strategy string, now time.Time) (Entry, bool) {
 	}
 }
 
+func (p *Pool) Get(key string, now time.Time) (Entry, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	idx, ok := p.index[key]
+	if !ok {
+		return Entry{}, false
+	}
+	e := p.entries[idx]
+	if !e.disabledUntil.IsZero() && now.Before(e.disabledUntil) {
+		return Entry{}, false
+	}
+	return e, true
+}
+
 func (p *Pool) MarkSuccess(addr string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

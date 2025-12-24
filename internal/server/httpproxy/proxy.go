@@ -34,6 +34,7 @@ type Server struct {
 	pool      *pool.Pool
 	auth      config.AuthConfig
 	selection config.SelectionConfig
+	sticky    *stickyMap
 
 	client *http.Client
 
@@ -50,6 +51,9 @@ func New(log *slog.Logger, addr string, mode Mode, p *pool.Pool, auth config.Aut
 		pool:      p,
 		auth:      auth,
 		selection: sel,
+	}
+	if sel.Sticky.Enabled {
+		s.sticky = newStickyMap(time.Duration(sel.Sticky.TTLSeconds)*time.Second, sel.Sticky.MaxEntries)
 	}
 
 	transport := &http.Transport{
@@ -174,6 +178,17 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) error {
 		return errors.New("hijacking not supported")
 	}
 
+	policy, err := stickyPolicyFromRequest(s.selection, r)
+	if err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return err
+	}
+
+	stickyEnabled := s.selection.Sticky.Enabled && s.sticky != nil && policy.traceID != ""
+	if policy.forceSticky != nil {
+		stickyEnabled = *policy.forceSticky && s.sticky != nil && policy.traceID != ""
+	}
+
 	clientConn, _, err := hj.Hijack()
 	if err != nil {
 		http.Error(w, "Hijack failed", http.StatusInternalServerError)
@@ -186,9 +201,46 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) error {
 		target += ":443"
 	}
 
+	now := time.Now()
+	mappedKey := ""
+	hasMapping := false
+	if stickyEnabled {
+		mappedKey, hasMapping = s.sticky.Get(policy.traceID, now)
+	}
+
 	var lastErr error
 	for attempt := 0; attempt <= s.selection.Retries; attempt++ {
-		entry, ok := s.pool.Next(s.selection.Strategy, time.Now())
+		now = time.Now()
+		var entry pool.Entry
+		var ok bool
+		if strings.TrimSpace(policy.forceKey) != "" {
+			entry, ok = s.pool.Get(policy.forceKey, now)
+			if !ok {
+				http.Error(w, "Unknown upstream", http.StatusBadRequest)
+				return errors.New("unknown upstream")
+			}
+		} else if stickyEnabled {
+			if hasMapping {
+				entry, ok = s.pool.Get(mappedKey, now)
+				if !ok {
+					entry, ok = s.pool.Next(s.selection.Strategy, now)
+					if ok && policy.failover == "soft" {
+						mappedKey = entry.Key()
+						hasMapping = true
+						s.sticky.Set(policy.traceID, mappedKey, now)
+					}
+				}
+			} else {
+				entry, ok = s.pool.Next(s.selection.Strategy, now)
+				if ok {
+					mappedKey = entry.Key()
+					hasMapping = true
+					s.sticky.Set(policy.traceID, mappedKey, now)
+				}
+			}
+		} else {
+			entry, ok = s.pool.Next(s.selection.Strategy, now)
+		}
 		if !ok {
 			http.Error(w, "No available proxies", http.StatusServiceUnavailable)
 			return errors.New("no upstreams available")
@@ -197,7 +249,17 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) error {
 		upstreamConn, err := dialThroughSOCKS5(r.Context(), entry, "tcp", target)
 		if err != nil {
 			lastErr = err
-			s.pool.MarkFailure(entry.Key(), time.Now(), time.Duration(s.selection.FailureBackoffSeconds)*time.Second, time.Duration(s.selection.MaxBackoffSeconds)*time.Second)
+			s.pool.MarkFailure(entry.Key(), now, time.Duration(s.selection.FailureBackoffSeconds)*time.Second, time.Duration(s.selection.MaxBackoffSeconds)*time.Second)
+			if stickyEnabled && policy.failover == "soft" && strings.TrimSpace(policy.forceKey) == "" {
+				if replacement, ok := s.pool.Next(s.selection.Strategy, now); ok {
+					mappedKey = replacement.Key()
+					hasMapping = true
+					s.sticky.Set(policy.traceID, mappedKey, now)
+				} else {
+					s.sticky.Delete(policy.traceID)
+					hasMapping = false
+				}
+			}
 			continue
 		}
 		s.pool.MarkSuccess(entry.Key())
@@ -231,13 +293,64 @@ func (s *Server) handleForward(w http.ResponseWriter, r *http.Request) (int, err
 		return http.StatusBadRequest, err
 	}
 
+	policy, err := stickyPolicyFromRequest(s.selection, r)
+	if err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return http.StatusBadRequest, err
+	}
+
+	stickyEnabled := s.selection.Sticky.Enabled && s.sticky != nil && policy.traceID != ""
+	if policy.forceSticky != nil {
+		stickyEnabled = *policy.forceSticky && s.sticky != nil && policy.traceID != ""
+	}
+
 	stripHopByHopHeaders(outReq.Header)
+	outReq.Header.Del(headerSticky)
+	outReq.Header.Del(headerFailover)
+	outReq.Header.Del(headerUpstream)
 
 	retryable := isRetryableRequest(outReq, s.selection.RetryNonIdempotent)
 	var lastErr error
 
+	now := time.Now()
+	mappedKey := ""
+	hasMapping := false
+	if stickyEnabled {
+		mappedKey, hasMapping = s.sticky.Get(policy.traceID, now)
+	}
+
 	for attempt := 0; attempt <= s.selection.Retries; attempt++ {
-		entry, ok := s.pool.Next(s.selection.Strategy, time.Now())
+		now = time.Now()
+		var entry pool.Entry
+		var ok bool
+		if strings.TrimSpace(policy.forceKey) != "" {
+			entry, ok = s.pool.Get(policy.forceKey, now)
+			if !ok {
+				http.Error(w, "Unknown upstream", http.StatusBadRequest)
+				return http.StatusBadRequest, errors.New("unknown upstream")
+			}
+		} else if stickyEnabled {
+			if hasMapping {
+				entry, ok = s.pool.Get(mappedKey, now)
+				if !ok {
+					entry, ok = s.pool.Next(s.selection.Strategy, now)
+					if ok && policy.failover == "soft" {
+						mappedKey = entry.Key()
+						hasMapping = true
+						s.sticky.Set(policy.traceID, mappedKey, now)
+					}
+				}
+			} else {
+				entry, ok = s.pool.Next(s.selection.Strategy, now)
+				if ok {
+					mappedKey = entry.Key()
+					hasMapping = true
+					s.sticky.Set(policy.traceID, mappedKey, now)
+				}
+			}
+		} else {
+			entry, ok = s.pool.Next(s.selection.Strategy, now)
+		}
 		if !ok {
 			http.Error(w, "No available proxies", http.StatusServiceUnavailable)
 			return http.StatusServiceUnavailable, errors.New("no upstreams available")
@@ -247,7 +360,17 @@ func (s *Server) handleForward(w http.ResponseWriter, r *http.Request) (int, err
 		resp, err := s.client.Do(attemptReq)
 		if err != nil {
 			lastErr = err
-			s.pool.MarkFailure(entry.Key(), time.Now(), time.Duration(s.selection.FailureBackoffSeconds)*time.Second, time.Duration(s.selection.MaxBackoffSeconds)*time.Second)
+			s.pool.MarkFailure(entry.Key(), now, time.Duration(s.selection.FailureBackoffSeconds)*time.Second, time.Duration(s.selection.MaxBackoffSeconds)*time.Second)
+			if stickyEnabled && policy.failover == "soft" && strings.TrimSpace(policy.forceKey) == "" {
+				if replacement, ok := s.pool.Next(s.selection.Strategy, now); ok {
+					mappedKey = replacement.Key()
+					hasMapping = true
+					s.sticky.Set(policy.traceID, mappedKey, now)
+				} else {
+					s.sticky.Delete(policy.traceID)
+					hasMapping = false
+				}
+			}
 			if retryable && attempt < s.selection.Retries {
 				continue
 			}

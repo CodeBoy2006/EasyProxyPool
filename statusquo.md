@@ -33,3 +33,9 @@
 - **Status:** Completed
 - **Next Steps:** None.
 - **Context:** N/A.
+
+## [2025-12-24 13:03] HTTP traceparent sticky upstream
+- **Changes:** Added `selection.sticky` config and implemented HTTP proxy sticky upstream selection keyed by W3C `traceparent` trace-id (TTL + max entries), with optional header overrides and soft/hard failover behavior.
+- **Status:** Completed
+- **Next Steps:** (Optional) Expose a safe way to discover `entry.Key()` (nodeID) for `X-EasyProxyPool-Upstream` without leaking secrets.
+- **Context:** Sticky selection applies only to HTTP proxy requests where `traceparent` is visible to the proxy (e.g. `curl --proxy-header` for CONNECT).

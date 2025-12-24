@@ -68,6 +68,20 @@ type SelectionConfig struct {
 	FailureBackoffSeconds int    `yaml:"failure_backoff_seconds"`
 	MaxBackoffSeconds     int    `yaml:"max_backoff_seconds"`
 	RetryNonIdempotent    bool   `yaml:"retry_non_idempotent"`
+
+	Sticky StickyConfig `yaml:"sticky"`
+}
+
+type StickyConfig struct {
+	Enabled    bool `yaml:"enabled"`
+	TTLSeconds int  `yaml:"ttl_seconds"`
+	MaxEntries int  `yaml:"max_entries"`
+	// HeaderOverride controls whether request headers can override sticky behavior.
+	HeaderOverride *bool `yaml:"header_override"`
+	// Failover controls whether to switch and update mapping when the chosen upstream fails:
+	// - soft: switch to a new upstream and update the mapping
+	// - hard: keep mapping even on failures
+	Failover string `yaml:"failover"`
 }
 
 type AdaptersConfig struct {
@@ -180,6 +194,19 @@ func applyDefaults(cfg *Config) {
 	if cfg.Selection.MaxBackoffSeconds <= 0 {
 		cfg.Selection.MaxBackoffSeconds = 600
 	}
+	if cfg.Selection.Sticky.TTLSeconds <= 0 {
+		cfg.Selection.Sticky.TTLSeconds = 600
+	}
+	if cfg.Selection.Sticky.MaxEntries <= 0 {
+		cfg.Selection.Sticky.MaxEntries = 50000
+	}
+	if cfg.Selection.Sticky.HeaderOverride == nil {
+		b := true
+		cfg.Selection.Sticky.HeaderOverride = &b
+	}
+	if cfg.Selection.Sticky.Failover == "" {
+		cfg.Selection.Sticky.Failover = "soft"
+	}
 
 	if cfg.Adapters.Xray.WorkDir == "" {
 		cfg.Adapters.Xray.WorkDir = ".easyproxypool/xray"
@@ -240,6 +267,19 @@ func validate(cfg Config) error {
 	case "round_robin", "random":
 	default:
 		return fmt.Errorf("selection.strategy: unsupported %q (use round_robin or random)", cfg.Selection.Strategy)
+	}
+	switch cfg.Selection.Sticky.Failover {
+	case "soft", "hard":
+	default:
+		return fmt.Errorf("selection.sticky.failover: unsupported %q (use soft or hard)", cfg.Selection.Sticky.Failover)
+	}
+	if cfg.Selection.Sticky.Enabled {
+		if cfg.Selection.Sticky.TTLSeconds <= 0 {
+			return fmt.Errorf("selection.sticky.ttl_seconds: must be > 0 when selection.sticky.enabled=true")
+		}
+		if cfg.Selection.Sticky.MaxEntries <= 0 {
+			return fmt.Errorf("selection.sticky.max_entries: must be > 0 when selection.sticky.enabled=true")
+		}
 	}
 
 	if cfg.Adapters.Xray.Enabled {

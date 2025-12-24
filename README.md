@@ -12,6 +12,7 @@ It continuously fetches proxy lists from multiple sources, health-checks them, a
 - Concurrent health checks with latency thresholding
 - Single pool with SOCKS5 + HTTP listeners
 - Per-request upstream selection (`round_robin` or `random`)
+- Optional sticky upstream selection keyed by `traceparent` (HTTP proxy only)
 - Retries with exponential backoff + temporary upstream disable on failures
 - Optional authentication:
   - HTTP: `Proxy-Authorization: Basic ...`
@@ -78,9 +79,35 @@ Key options:
 - `health_check.*`: timeouts + TLS handshake target and threshold
 - `ports.*`: listening addresses for the local proxies
 - `selection.*`: upstream selection + retries/backoff behavior
+- `selection.sticky.*`: trace-based sticky upstream selection (optional)
 - `auth.*`: enable proxy auth (recommended if binding to non-local interfaces)
 - `admin.*`: optional status API
 - `adapters.xray.*`: enable xray-core adapter for Clash-style nodes (optional; default disabled)
+
+### Trace-based sticky egress (HTTP proxy only)
+
+If you want to pin a "trace" to a fixed egress IP (upstream node), enable `selection.sticky` and send a W3C
+`traceparent` header. EasyProxyPool will map `trace-id -> upstream` in-memory (TTL + max entries).
+
+Per-request overrides (optional; controlled by `selection.sticky.header_override`):
+
+- `X-EasyProxyPool-Sticky: on|off`
+- `X-EasyProxyPool-Failover: soft|hard`
+- `X-EasyProxyPool-Upstream: <entryKey>` (forces a specific upstream key)
+
+Examples:
+
+```bash
+# HTTPS via CONNECT (send headers to proxy)
+curl -x http://127.0.0.1:17285 \
+  --proxy-header 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
+  https://api.ipify.org
+
+# Disable sticky for this request
+curl -x http://127.0.0.1:17285 \
+  --proxy-header 'X-EasyProxyPool-Sticky: off' \
+  https://api.ipify.org
+```
 
 ### Clash YAML + xray-core adapter (optional)
 

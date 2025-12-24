@@ -12,6 +12,7 @@ EasyProxyPool 是一个本地运行的 **SOCKS5 + HTTP/HTTPS（CONNECT）** 动�
 - 高并发测活 + 延迟阈值过滤
 - 单套代理池，提供 SOCKS5 + HTTP 两个监听端口
 - 上游选择策略（`round_robin` 或 `random`）
+- 可选：基于 `traceparent` 的粘性上游选择（仅 HTTP 代理路径）
 - 请求失败自动重试（切换上游）+ 指数退避 + 临时禁用失败上游
 - 可选认证：
   - HTTP：`Proxy-Authorization: Basic ...`
@@ -78,9 +79,35 @@ docker-compose up -d
 - `health_check.*`：测活超时、TLS 握手目标与阈值
 - `ports.*`：本地代理监听地址
 - `selection.*`：上游选择 + 重试/退避策略
+- `selection.sticky.*`：基于 trace 的粘性上游选择（可选）
 - `auth.*`：开启代理认证（如果监听在非本地地址上，强烈建议开启）
 - `admin.*`：管理接口开关与监听地址
 - `adapters.xray.*`：启用 xray-core 作为 Clash 节点协议适配层（可选，默认关闭）
+
+### 基于 trace 的“固定出口 IP”（仅 HTTP 代理路径）
+
+如需把一个“trace”绑定到固定出口 IP（上游节点），启用 `selection.sticky` 并在请求中携带 W3C 标准
+`traceparent`。EasyProxyPool 会在内存中维护 `trace-id -> upstream` 映射（TTL + 最大条目数上限）。
+
+可选的逐请求覆盖（由 `selection.sticky.header_override` 控制）：
+
+- `X-EasyProxyPool-Sticky: on|off`
+- `X-EasyProxyPool-Failover: soft|hard`
+- `X-EasyProxyPool-Upstream: <entryKey>`（强制指定某个上游 key）
+
+示例：
+
+```bash
+# HTTPS via CONNECT（使用 --proxy-header 把 header 发给代理）
+curl -x http://127.0.0.1:17285 \
+  --proxy-header 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
+  https://api.ipify.org
+
+# 本次请求禁用 sticky
+curl -x http://127.0.0.1:17285 \
+  --proxy-header 'X-EasyProxyPool-Sticky: off' \
+  https://api.ipify.org
+```
 
 ### Clash YAML + xray-core 协议适配（可选）
 
