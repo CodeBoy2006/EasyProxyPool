@@ -27,3 +27,9 @@
 - **Status:** Completed
 - **Next Steps:** (Optional) Remove strict-related config fields and API keys in a breaking-change release, or keep as deprecated for compatibility.
 - **Context:** Strict/relaxed pool stats in `/status` may both show the same pool because strict is no longer a distinct mode.
+
+## [2025-12-24 12:39] Docs tweak: ports wording
+- **Changes:** Updated README wording so `ports.*` no longer implies 4 listeners.
+- **Status:** Completed
+- **Next Steps:** None.
+- **Context:** N/A.
