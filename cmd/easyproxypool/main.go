@@ -29,6 +29,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	startedAt := time.Now()
+
 	logger := logging.New(cfg.Logging.Level, os.Getenv("LOG_LEVEL"))
 	logger.Info("starting EasyProxyPool", "config", configPath, "update_every_minutes", cfg.UpdateIntervalMinutes)
 
@@ -43,7 +45,10 @@ func main() {
 	updater.Start(ctx)
 
 	if cfg.Admin.Enabled && cfg.Admin.Addr != "" {
-		adminServer := admin.New(logger, cfg.Admin.Addr, status, mainPool, mainPool)
+		adminServer := admin.New(logger, cfg.Admin.Addr, status, mainPool, mainPool, admin.Options{
+			Auth:      cfg.Admin.Auth,
+			StartedAt: startedAt,
+		})
 		adminServer.Start(ctx)
 	}
 

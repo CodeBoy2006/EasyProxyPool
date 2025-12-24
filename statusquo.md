@@ -75,3 +75,9 @@
 - **Status:** Completed
 - **Next Steps:** Assign owners and start with WEBUI-010 (admin auth + API), then WEBUI-030 (SSE logs) and WEBUI-040 (UI).
 - **Context:** CSV derived from plan/2025-12-24_14-39-49-lightweight-web-dashboard.md; includes explicit acceptance/review/test MCP per task.
+
+## [2025-12-24 14:58] [WEBUI-010] Admin API + auth middleware
+- **Changes:** Added admin auth modes (disabled/basic/shared_token) and new admin API endpoints (/api/status, /api/info, /api/nodes placeholder) with auth protection.
+- **Status:** Completed
+- **Next Steps:** Implement real node health in /api/nodes (WEBUI-020) and SSE logs (WEBUI-030).
+- **Context:** Sandbox disallows binding TCP listeners, so runtime curl validation is limited here; go test ./... passes.

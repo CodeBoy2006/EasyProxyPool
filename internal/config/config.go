@@ -64,8 +64,24 @@ type AuthConfig struct {
 }
 
 type AdminConfig struct {
-	Enabled bool   `yaml:"enabled"`
-	Addr    string `yaml:"addr"`
+	Enabled bool            `yaml:"enabled"`
+	Addr    string          `yaml:"addr"`
+	Auth    AdminAuthConfig `yaml:"auth"`
+}
+
+type AdminAuthConfig struct {
+	// Mode supports:
+	// - disabled: no auth
+	// - basic: require username/password match
+	// - shared_token: require a shared token (recommended for browser + SSE)
+	Mode     string `yaml:"mode"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+	Token    string `yaml:"token"`
+
+	// AllowUnauthenticatedHealthz controls whether /healthz is exempt from auth.
+	// Default: true
+	AllowUnauthenticatedHealthz *bool `yaml:"allow_unauthenticated_healthz"`
 }
 
 type SelectionConfig struct {
@@ -186,6 +202,13 @@ func applyDefaults(cfg *Config) {
 	if cfg.Admin.Addr == "" {
 		cfg.Admin.Addr = ":17287"
 	}
+	if cfg.Admin.Auth.Mode == "" {
+		cfg.Admin.Auth.Mode = "disabled"
+	}
+	if cfg.Admin.Auth.AllowUnauthenticatedHealthz == nil {
+		b := true
+		cfg.Admin.Auth.AllowUnauthenticatedHealthz = &b
+	}
 	if cfg.Auth.Mode == "" {
 		if strings.TrimSpace(cfg.Auth.Username) == "" {
 			cfg.Auth.Mode = "disabled"
@@ -278,6 +301,22 @@ func validate(cfg Config) error {
 	}
 	if cfg.Auth.Mode == "shared_password" && strings.TrimSpace(cfg.Auth.Password) == "" {
 		return fmt.Errorf("auth.password: required when auth.mode=shared_password")
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.Admin.Auth.Mode)) {
+	case "", "disabled", "basic", "shared_token":
+	default:
+		return fmt.Errorf("admin.auth.mode: unsupported %q (use disabled, basic, or shared_token)", cfg.Admin.Auth.Mode)
+	}
+	if strings.ToLower(strings.TrimSpace(cfg.Admin.Auth.Mode)) == "basic" {
+		if strings.TrimSpace(cfg.Admin.Auth.Username) == "" {
+			return fmt.Errorf("admin.auth.username: required when admin.auth.mode=basic")
+		}
+		if strings.TrimSpace(cfg.Admin.Auth.Password) == "" {
+			return fmt.Errorf("admin.auth.password: required when admin.auth.mode=basic")
+		}
+	}
+	if strings.ToLower(strings.TrimSpace(cfg.Admin.Auth.Mode)) == "shared_token" && strings.TrimSpace(cfg.Admin.Auth.Token) == "" {
+		return fmt.Errorf("admin.auth.token: required when admin.auth.mode=shared_token")
 	}
 	switch cfg.Selection.Strategy {
 	case "round_robin", "random":
