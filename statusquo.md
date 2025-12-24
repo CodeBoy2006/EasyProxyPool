@@ -93,3 +93,9 @@
 - **Status:** Completed
 - **Next Steps:** Build embedded dashboard UI that consumes /api/* + SSE (WEBUI-040).
 - **Context:** Sandbox disallows binding TCP listeners; validate SSE behavior by running outside sandbox.
+
+## [2025-12-24 15:10] [WEBUI-040] Embedded admin dashboard UI
+- **Changes:** Added embedded Web UI served at `/ui/` (redirect from `/`) that polls `/api/status` and `/api/nodes` and consumes SSE `/api/events/logs` with a simple token/basic login UX.
+- **Status:** Completed
+- **Next Steps:** Add config knobs + docs (WEBUI-050) and unit/HTTP tests (WEBUI-060).
+- **Context:** Sandbox disallows binding TCP listeners; validate by running the binary locally and opening the UI in a browser.

@@ -3,8 +3,10 @@ package admin
 import (
 	"context"
 	"crypto/subtle"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"runtime"
@@ -19,6 +21,9 @@ import (
 	"github.com/CodeBoy2006/EasyProxyPool/internal/orchestrator"
 	"github.com/CodeBoy2006/EasyProxyPool/internal/pool"
 )
+
+//go:embed ui/*
+var uiFS embed.FS
 
 type Options struct {
 	Auth      config.AdminAuthConfig
@@ -70,6 +75,9 @@ func New(log *slog.Logger, addr string, status *orchestrator.Status, strictPool,
 	mux.Handle("/api/info", s.wrapAuth(http.HandlerFunc(s.handleInfo)))
 	mux.Handle("/api/nodes", s.wrapAuth(http.HandlerFunc(s.handleNodes)))
 	mux.Handle("/api/events/logs", s.wrapAuth(http.HandlerFunc(s.handleLogsSSE)))
+
+	mux.Handle("/ui/", s.wrapAuth(http.HandlerFunc(s.handleUI)))
+	mux.Handle("/", s.wrapAuth(http.HandlerFunc(s.handleRoot)))
 
 	s.srv = &http.Server{
 		Addr:    addr,
@@ -184,6 +192,23 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		"server_time_utc": now.UTC().Format(time.RFC3339),
 	}
 	writeJSON(w, resp)
+}
+
+func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
+	if r.URL != nil && r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	http.Redirect(w, r, "/ui/", http.StatusFound)
+}
+
+func (s *Server) handleUI(w http.ResponseWriter, r *http.Request) {
+	sub, err := fs.Sub(uiFS, "ui")
+	if err != nil {
+		http.Error(w, "UI unavailable", http.StatusInternalServerError)
+		return
+	}
+	http.StripPrefix("/ui/", http.FileServer(http.FS(sub))).ServeHTTP(w, r)
 }
 
 func (s *Server) handleLogsSSE(w http.ResponseWriter, r *http.Request) {
