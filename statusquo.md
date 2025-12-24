@@ -135,3 +135,9 @@
 - **Status:** Completed
 - **Next Steps:** Rebuild and retry `http://127.0.0.1:17287/ui/` after the log line `admin listening` appears.
 - **Context:** If you interrupt startup (Ctrl-C) before the initial update finishes, ctx is already canceled and the admin server may start then immediately shut down.
+
+## [2025-12-24 19:04] Start admin UI before first update
+- **Changes:** Start the admin server before the initial updater run so the dashboard is reachable immediately during the first fetch/health-check cycle.
+- **Status:** Completed
+- **Next Steps:** Rebuild and run; you should see `admin listening` almost immediately, and `/ui/` will show "Loading" until the first update finishes.
+- **Context:** Previously admin started only after the initial update completed, which made `/ui/` appear down for ~tens of seconds.

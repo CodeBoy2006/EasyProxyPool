@@ -45,9 +45,6 @@ func main() {
 
 	status := orchestrator.NewStatus()
 
-	updater := orchestrator.NewUpdater(logger, cfg, mainPool, status)
-	updater.Start(ctx)
-
 	if cfg.Admin.Enabled && cfg.Admin.Addr != "" {
 		uiEnabled := cfg.Admin.UIEnabled == nil || *cfg.Admin.UIEnabled
 		heartbeat := time.Duration(0)
@@ -64,6 +61,9 @@ func main() {
 		})
 		adminServer.Start(ctx)
 	}
+
+	updater := orchestrator.NewUpdater(logger, cfg, mainPool, status)
+	updater.Start(ctx)
 
 	var socks *socks5proxy.Server
 	var httpSrv *httpproxy.Server
