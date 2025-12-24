@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -196,4 +197,50 @@ func TestAdminSSE_ConnectionLimit429(t *testing.T) {
 
 	cancel1()
 	<-done1
+}
+
+func TestAdminUI_ServesIndex(t *testing.T) {
+	log := newTestLogger()
+	status := orchestrator.NewStatus()
+	p := pool.New("pool", log)
+
+	s := New(log, ":0", status, p, p, Options{
+		Auth:          config.AdminAuthConfig{Mode: "disabled"},
+		UIEnabled:     true,
+		LogBuffer:     logging.NewLogBuffer(10),
+		MaxSSEClients: 1,
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "http://example/ui/", nil)
+	s.srv.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "<title>EasyProxyPool Dashboard</title>") {
+		t.Fatalf("expected dashboard html")
+	}
+}
+
+func TestAdminUI_ServesAssets(t *testing.T) {
+	log := newTestLogger()
+	status := orchestrator.NewStatus()
+	p := pool.New("pool", log)
+
+	s := New(log, ":0", status, p, p, Options{
+		Auth:          config.AdminAuthConfig{Mode: "disabled"},
+		UIEnabled:     true,
+		LogBuffer:     logging.NewLogBuffer(10),
+		MaxSSEClients: 1,
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "http://example/ui/app.js", nil)
+	s.srv.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "EventSource") {
+		t.Fatalf("expected app.js content")
+	}
 }

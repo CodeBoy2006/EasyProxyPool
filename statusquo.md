@@ -123,3 +123,9 @@
 - **Status:** Completed
 - **Next Steps:** None.
 - **Context:** Admin is disabled by default; if enabling on non-loopback interfaces, always enable auth and restrict network access.
+
+## [2025-12-24 17:28] Fix admin UI serving
+- **Changes:** Fixed `/ui/` static file serving to avoid redirect loops and added tests covering `/ui/` and asset delivery.
+- **Status:** Completed
+- **Next Steps:** Rebuild the binary and retry opening `http://127.0.0.1:17287/ui/` after "admin listening" appears.
+- **Context:** Previously `http.StripPrefix("/ui/", ...)` could produce an empty path for `/ui/`, causing a redirect loop; now paths are normalized.

@@ -216,7 +216,16 @@ func (s *Server) handleUI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "UI unavailable", http.StatusInternalServerError)
 		return
 	}
-	http.StripPrefix("/ui/", http.FileServer(http.FS(sub))).ServeHTTP(w, r)
+	fsHandler := http.FileServer(http.FS(sub))
+
+	r2 := r.Clone(r.Context())
+	if r2.URL != nil {
+		r2.URL.Path = strings.TrimPrefix(r.URL.Path, "/ui")
+		if r2.URL.Path == "" {
+			r2.URL.Path = "/"
+		}
+	}
+	fsHandler.ServeHTTP(w, r2)
 }
 
 func (s *Server) handleLogsSSE(w http.ResponseWriter, r *http.Request) {
