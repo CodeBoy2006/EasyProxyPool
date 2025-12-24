@@ -99,3 +99,9 @@
 - **Status:** Completed
 - **Next Steps:** Add config knobs + docs (WEBUI-050) and unit/HTTP tests (WEBUI-060).
 - **Context:** Sandbox disallows binding TCP listeners; validate by running the binary locally and opening the UI in a browser.
+
+## [2025-12-24 15:15] [WEBUI-050] Admin config knobs + docs
+- **Changes:** Added `admin.ui_enabled`, `admin.log_buffer_lines`, and `admin.sse_max_clients` config options; updated `config.yaml` and both READMEs with dashboard/UI/auth/SSE usage examples.
+- **Status:** Completed
+- **Next Steps:** Add unit + HTTP tests for auth/log buffer (WEBUI-060) and hardening (WEBUI-070).
+- **Context:** Curl/UI examples require running outside sandbox (this environment can’t bind TCP listeners).

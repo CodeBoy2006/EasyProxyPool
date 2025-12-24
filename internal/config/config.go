@@ -67,6 +67,18 @@ type AdminConfig struct {
 	Enabled bool            `yaml:"enabled"`
 	Addr    string          `yaml:"addr"`
 	Auth    AdminAuthConfig `yaml:"auth"`
+
+	// UIEnabled controls whether the embedded dashboard UI is served under /ui/.
+	// Default: true
+	UIEnabled *bool `yaml:"ui_enabled"`
+
+	// LogBufferLines controls how many recent log events are kept in memory for SSE streaming.
+	// Default: 2000
+	LogBufferLines int `yaml:"log_buffer_lines"`
+
+	// SSEMaxClients controls how many concurrent /api/events/logs SSE connections are allowed.
+	// Default: 10
+	SSEMaxClients int `yaml:"sse_max_clients"`
 }
 
 type AdminAuthConfig struct {
@@ -202,6 +214,16 @@ func applyDefaults(cfg *Config) {
 	if cfg.Admin.Addr == "" {
 		cfg.Admin.Addr = ":17287"
 	}
+	if cfg.Admin.UIEnabled == nil {
+		b := true
+		cfg.Admin.UIEnabled = &b
+	}
+	if cfg.Admin.LogBufferLines == 0 {
+		cfg.Admin.LogBufferLines = 2000
+	}
+	if cfg.Admin.SSEMaxClients <= 0 {
+		cfg.Admin.SSEMaxClients = 10
+	}
 	if cfg.Admin.Auth.Mode == "" {
 		cfg.Admin.Auth.Mode = "disabled"
 	}
@@ -317,6 +339,12 @@ func validate(cfg Config) error {
 	}
 	if strings.ToLower(strings.TrimSpace(cfg.Admin.Auth.Mode)) == "shared_token" && strings.TrimSpace(cfg.Admin.Auth.Token) == "" {
 		return fmt.Errorf("admin.auth.token: required when admin.auth.mode=shared_token")
+	}
+	if cfg.Admin.LogBufferLines < 0 {
+		return fmt.Errorf("admin.log_buffer_lines: must be >= 0")
+	}
+	if cfg.Admin.SSEMaxClients <= 0 {
+		return fmt.Errorf("admin.sse_max_clients: must be > 0")
 	}
 	switch cfg.Selection.Strategy {
 	case "round_robin", "random":

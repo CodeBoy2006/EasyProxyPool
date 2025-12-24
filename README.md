@@ -81,7 +81,7 @@ Key options:
 - `selection.*`: upstream selection + retries/backoff behavior
 - `selection.sticky.*`: session-key sticky upstream selection (optional)
 - `auth.*`: enable proxy auth (recommended if binding to non-local interfaces)
-- `admin.*`: optional status API
+- `admin.*`: optional admin API + embedded dashboard (`/ui/`) + SSE logs
 - `adapters.xray.*`: enable xray-core adapter for Clash-style nodes (optional; default disabled)
 
 ### Authentication
@@ -173,14 +173,35 @@ Notes:
 - Keep xray SOCKS/metrics listeners on loopback interfaces.
 - xray-core is MPL-2.0; if you redistribute xray binaries with your image/release, include its license and notices.
 
-## Admin API (optional)
+## Admin API / Dashboard (optional)
 
-Enable `admin.enabled: true` (default addr `:17287`), then:
+Enable `admin.enabled: true` (default addr `:17287`).
+
+Endpoints:
+
+- Health check: `GET /healthz` (can be configured to allow unauthenticated access)
+- Status JSON: `GET /status` or `GET /api/status`
+- Build/runtime info: `GET /api/info`
+- Node health snapshot: `GET /api/nodes`
+- Live logs (SSE): `GET /api/events/logs`
+- Web UI: `GET /ui/` (redirect from `/` when `admin.ui_enabled: true`)
+
+Examples (no auth):
 
 ```bash
 curl http://127.0.0.1:17287/healthz
 curl http://127.0.0.1:17287/status
+curl http://127.0.0.1:17287/ui/
 ```
+
+Examples (recommended `admin.auth.mode: shared_token`):
+
+```bash
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:17287/api/info
+curl -N 'http://127.0.0.1:17287/api/events/logs?token=<token>&since=0&level=info'
+```
+
+Security note: do not expose the admin/dashboard port publicly; keep it on loopback and use auth + network controls.
 
 ## Security notes
 

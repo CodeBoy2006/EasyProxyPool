@@ -81,7 +81,7 @@ docker-compose up -d
 - `selection.*`：上游选择 + 重试/退避策略
 - `selection.sticky.*`：基于会话 key 的粘性上游选择（可选）
 - `auth.*`：开启代理认证（如果监听在非本地地址上，强烈建议开启）
-- `admin.*`：管理接口开关与监听地址
+- `admin.*`：管理接口 + Web 仪表盘（/ui/）+ SSE 实时日志
 - `adapters.xray.*`：启用 xray-core 作为 Clash 节点协议适配层（可选，默认关闭）
 
 ### 认证
@@ -171,14 +171,35 @@ adapters:
 - 建议将 xray 的 SOCKS/metrics 仅监听在回环地址（127.0.0.1）。
 - xray-core 使用 MPL-2.0；若你在镜像/发行包中分发 xray 二进制，请同时包含其许可证与相关说明。
 
-## 管理接口（可选）
+## 管理接口 / 仪表盘（可选）
 
-在 `config.yaml` 中设置 `admin.enabled: true`（默认端口 `:17287`），然后：
+在 `config.yaml` 中设置 `admin.enabled: true`（默认端口 `:17287`）。
+
+接口列表：
+
+- 探活：`GET /healthz`（可配置允许免鉴权）
+- 状态 JSON：`GET /status` 或 `GET /api/status`
+- 构建/运行信息：`GET /api/info`
+- 节点健康快照：`GET /api/nodes`
+- 实时日志（SSE）：`GET /api/events/logs`
+- Web 仪表盘：`GET /ui/`（当 `admin.ui_enabled: true` 时，访问 `/` 会跳转到 `/ui/`）
+
+示例（无鉴权）：
 
 ```bash
 curl http://127.0.0.1:17287/healthz
 curl http://127.0.0.1:17287/status
+curl http://127.0.0.1:17287/ui/
 ```
+
+示例（推荐 `admin.auth.mode: shared_token`）：
+
+```bash
+curl -H 'Authorization: Bearer <token>' http://127.0.0.1:17287/api/info
+curl -N 'http://127.0.0.1:17287/api/events/logs?token=<token>&since=0&level=info'
+```
+
+安全提示：不要将管理接口/仪表盘端口暴露到公网；建议仅监听回环地址，并配合鉴权与防火墙/访问控制。
 
 ## 安全提示
 

@@ -29,6 +29,8 @@ type Options struct {
 	Auth      config.AdminAuthConfig
 	StartedAt time.Time
 
+	UIEnabled bool
+
 	LogBuffer     *logging.LogBuffer
 	MaxSSEClients int
 }
@@ -76,8 +78,10 @@ func New(log *slog.Logger, addr string, status *orchestrator.Status, strictPool,
 	mux.Handle("/api/nodes", s.wrapAuth(http.HandlerFunc(s.handleNodes)))
 	mux.Handle("/api/events/logs", s.wrapAuth(http.HandlerFunc(s.handleLogsSSE)))
 
-	mux.Handle("/ui/", s.wrapAuth(http.HandlerFunc(s.handleUI)))
-	mux.Handle("/", s.wrapAuth(http.HandlerFunc(s.handleRoot)))
+	if opt.UIEnabled {
+		mux.Handle("/ui/", s.wrapAuth(http.HandlerFunc(s.handleUI)))
+		mux.Handle("/", s.wrapAuth(http.HandlerFunc(s.handleRoot)))
+	}
 
 	s.srv = &http.Server{
 		Addr:    addr,
