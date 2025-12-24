@@ -105,3 +105,9 @@
 - **Status:** Completed
 - **Next Steps:** Add unit + HTTP tests for auth/log buffer (WEBUI-060) and hardening (WEBUI-070).
 - **Context:** Curl/UI examples require running outside sandbox (this environment can’t bind TCP listeners).
+
+## [2025-12-24 15:18] [WEBUI-060] Add unit + HTTP tests
+- **Changes:** Added deterministic tests for log buffer behavior and admin auth/SSE limits/endpoints; verified with `go test ./...`.
+- **Status:** Completed
+- **Next Steps:** Harden SSE with heartbeat/disable switches (WEBUI-070) and add the remaining non-code scope doc (WEBUI-000).
+- **Context:** Tests avoid real TCP listeners to stay compatible with sandbox restrictions.
