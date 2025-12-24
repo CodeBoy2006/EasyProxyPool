@@ -31,7 +31,7 @@ func main() {
 
 	startedAt := time.Now()
 
-	logger := logging.New(cfg.Logging.Level, os.Getenv("LOG_LEVEL"))
+	logger, logBuf := logging.NewWithBuffer(cfg.Logging.Level, os.Getenv("LOG_LEVEL"), 2000)
 	logger.Info("starting EasyProxyPool", "config", configPath, "update_every_minutes", cfg.UpdateIntervalMinutes)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -48,6 +48,7 @@ func main() {
 		adminServer := admin.New(logger, cfg.Admin.Addr, status, mainPool, mainPool, admin.Options{
 			Auth:      cfg.Admin.Auth,
 			StartedAt: startedAt,
+			LogBuffer: logBuf,
 		})
 		adminServer.Start(ctx)
 	}

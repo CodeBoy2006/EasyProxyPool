@@ -4,15 +4,18 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"runtime"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/CodeBoy2006/EasyProxyPool/internal/config"
+	"github.com/CodeBoy2006/EasyProxyPool/internal/logging"
 	"github.com/CodeBoy2006/EasyProxyPool/internal/orchestrator"
 	"github.com/CodeBoy2006/EasyProxyPool/internal/pool"
 )
@@ -20,6 +23,9 @@ import (
 type Options struct {
 	Auth      config.AdminAuthConfig
 	StartedAt time.Time
+
+	LogBuffer     *logging.LogBuffer
+	MaxSSEClients int
 }
 
 type Server struct {
@@ -32,9 +38,16 @@ type Server struct {
 
 	auth      config.AdminAuthConfig
 	startedAt time.Time
+
+	logBuf *logging.LogBuffer
+	sseSem chan struct{}
 }
 
 func New(log *slog.Logger, addr string, status *orchestrator.Status, strictPool, relaxedPool *pool.Pool, opt Options) *Server {
+	maxSSE := opt.MaxSSEClients
+	if maxSSE <= 0 {
+		maxSSE = 10
+	}
 	s := &Server{
 		log:         log,
 		status:      status,
@@ -42,6 +55,8 @@ func New(log *slog.Logger, addr string, status *orchestrator.Status, strictPool,
 		relaxedPool: relaxedPool,
 		auth:        opt.Auth,
 		startedAt:   opt.StartedAt,
+		logBuf:      opt.LogBuffer,
+		sseSem:      make(chan struct{}, maxSSE),
 	}
 
 	mux := http.NewServeMux()
@@ -54,6 +69,7 @@ func New(log *slog.Logger, addr string, status *orchestrator.Status, strictPool,
 	mux.Handle("/api/status", s.wrapAuth(http.HandlerFunc(s.handleStatus)))
 	mux.Handle("/api/info", s.wrapAuth(http.HandlerFunc(s.handleInfo)))
 	mux.Handle("/api/nodes", s.wrapAuth(http.HandlerFunc(s.handleNodes)))
+	mux.Handle("/api/events/logs", s.wrapAuth(http.HandlerFunc(s.handleLogsSSE)))
 
 	s.srv = &http.Server{
 		Addr:    addr,
@@ -168,6 +184,102 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		"server_time_utc": now.UTC().Format(time.RFC3339),
 	}
 	writeJSON(w, resp)
+}
+
+func (s *Server) handleLogsSSE(w http.ResponseWriter, r *http.Request) {
+	select {
+	case s.sseSem <- struct{}{}:
+		defer func() { <-s.sseSem }()
+	default:
+		http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+		return
+	}
+	if s.logBuf == nil {
+		http.Error(w, "Log buffer disabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	q := r.URL.Query()
+	since := uint64(0)
+	if v := strings.TrimSpace(q.Get("since")); v != "" {
+		if parsed, err := strconv.ParseUint(v, 10, 64); err == nil {
+			since = parsed
+		}
+	}
+	minLevel := parseSlogLevel(q.Get("level"))
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	flusher.Flush()
+
+	for _, e := range s.logBuf.SnapshotSince(since, minLevel) {
+		if err := writeSSELog(w, e); err != nil {
+			return
+		}
+		flusher.Flush()
+		since = e.ID
+	}
+
+	ch, cancel := s.logBuf.Subscribe(256)
+	defer cancel()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case e, ok := <-ch:
+			if !ok {
+				return
+			}
+			if e.ID <= since || e.Level < minLevel {
+				continue
+			}
+			if err := writeSSELog(w, e); err != nil {
+				return
+			}
+			flusher.Flush()
+			since = e.ID
+		}
+	}
+}
+
+func writeSSELog(w http.ResponseWriter, e logging.LogEvent) error {
+	payload := map[string]any{
+		"id":       e.ID,
+		"time_utc": e.Time.UTC().Format(time.RFC3339Nano),
+		"level":    strings.ToLower(e.Level.String()),
+		"msg":      e.Message,
+		"attrs":    e.Attrs,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, "id: %d\nevent: log\ndata: %s\n\n", e.ID, data)
+	return err
+}
+
+func parseSlogLevel(s string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	case "info", "":
+		return slog.LevelInfo
+	default:
+		return slog.LevelInfo
+	}
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

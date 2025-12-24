@@ -87,3 +87,9 @@
 - **Status:** Completed
 - **Next Steps:** Implement SSE log streaming (WEBUI-030) and the embedded UI (WEBUI-040).
 - **Context:** Sandbox disallows binding TCP listeners; runtime verification requires running outside sandbox with xray enabled.
+
+## [2025-12-24 15:06] [WEBUI-030] Log buffer + SSE streaming
+- **Changes:** Added bounded in-memory log buffer and SSE endpoint `/api/events/logs` with since/level filters, auth support, and connection limiting.
+- **Status:** Completed
+- **Next Steps:** Build embedded dashboard UI that consumes /api/* + SSE (WEBUI-040).
+- **Context:** Sandbox disallows binding TCP listeners; validate SSE behavior by running outside sandbox.
