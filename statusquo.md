@@ -81,3 +81,9 @@
 - **Status:** Completed
 - **Next Steps:** Implement real node health in /api/nodes (WEBUI-020) and SSE logs (WEBUI-030).
 - **Context:** Sandbox disallows binding TCP listeners, so runtime curl validation is limited here; go test ./... passes.
+
+## [2025-12-24 15:01] [WEBUI-020] Node health snapshot + /api/nodes
+- **Changes:** Persisted latest xray node health snapshot in orchestrator status and implemented /api/nodes to return alive/delay/last_seen/last_try without secrets.
+- **Status:** Completed
+- **Next Steps:** Implement SSE log streaming (WEBUI-030) and the embedded UI (WEBUI-040).
+- **Context:** Sandbox disallows binding TCP listeners; runtime verification requires running outside sandbox with xray enabled.

@@ -3,6 +3,8 @@ package orchestrator
 import (
 	"sync"
 	"time"
+
+	"github.com/CodeBoy2006/EasyProxyPool/internal/xray"
 )
 
 type Status struct {
@@ -16,6 +18,9 @@ type Status struct {
 	LastRelaxed     int
 
 	LastDetails UpdateDetails
+
+	LastNodeHealthRelaxedAt time.Time
+	LastNodeHealthRelaxed   map[string]xray.NodeHealth
 }
 
 type UpdateDetails struct {
@@ -70,7 +75,23 @@ func (s *Status) Snapshot() Status {
 		LastStrict:      s.LastStrict,
 		LastRelaxed:     s.LastRelaxed,
 		LastDetails:     cloneDetails(s.LastDetails),
+
+		LastNodeHealthRelaxedAt: s.LastNodeHealthRelaxedAt,
+		LastNodeHealthRelaxed:   cloneNodeHealth(s.LastNodeHealthRelaxed),
 	}
+}
+
+func (s *Status) SetRelaxedNodeHealth(t time.Time, h map[string]xray.NodeHealth) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.LastNodeHealthRelaxedAt = t
+	s.LastNodeHealthRelaxed = cloneNodeHealth(h)
+}
+
+func (s *Status) RelaxedNodeHealthSnapshot() (map[string]xray.NodeHealth, time.Time) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return cloneNodeHealth(s.LastNodeHealthRelaxed), s.LastNodeHealthRelaxedAt
 }
 
 func cloneDetails(d UpdateDetails) UpdateDetails {
@@ -83,4 +104,15 @@ func cloneDetails(d UpdateDetails) UpdateDetails {
 	}
 	d.SkippedByType = cp
 	return d
+}
+
+func cloneNodeHealth(h map[string]xray.NodeHealth) map[string]xray.NodeHealth {
+	if h == nil {
+		return nil
+	}
+	cp := make(map[string]xray.NodeHealth, len(h))
+	for k, v := range h {
+		cp[k] = v
+	}
+	return cp
 }

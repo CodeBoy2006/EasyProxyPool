@@ -195,6 +195,7 @@ func (u *Updater) runOnceXray(ctx context.Context, start time.Time) {
 	}
 
 	now := time.Now()
+	u.status.SetRelaxedNodeHealth(now, hr)
 	relaxedEntries := make([]pool.Entry, 0, len(genRelaxed.Included))
 
 	for _, id := range genRelaxed.Included {

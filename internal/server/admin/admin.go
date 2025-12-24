@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"runtime"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"time"
 
@@ -111,11 +112,59 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
-	// Placeholder: node health snapshot is added in WEBUI-020.
+
+	h, updatedAt := s.status.RelaxedNodeHealthSnapshot()
+
+	type node struct {
+		ID          string `json:"id"`
+		Alive       bool   `json:"alive"`
+		DelayMS     int64  `json:"delay_ms"`
+		LastSeenUTC string `json:"last_seen_utc"`
+		LastTryUTC  string `json:"last_try_utc"`
+	}
+
+	nodes := make([]node, 0, len(h))
+	alive := 0
+	for id, nh := range h {
+		if nh.Alive {
+			alive++
+		}
+		lastSeen := ""
+		if !nh.LastSeen.IsZero() {
+			lastSeen = nh.LastSeen.UTC().Format(time.RFC3339)
+		}
+		lastTry := ""
+		if !nh.LastTry.IsZero() {
+			lastTry = nh.LastTry.UTC().Format(time.RFC3339)
+		}
+		nodes = append(nodes, node{
+			ID:          id,
+			Alive:       nh.Alive,
+			DelayMS:     int64(nh.Delay / time.Millisecond),
+			LastSeenUTC: lastSeen,
+			LastTryUTC:  lastTry,
+		})
+	}
+	sort.Slice(nodes, func(i, j int) bool {
+		if nodes[i].Alive != nodes[j].Alive {
+			return nodes[i].Alive
+		}
+		if nodes[i].DelayMS != nodes[j].DelayMS {
+			return nodes[i].DelayMS < nodes[j].DelayMS
+		}
+		return nodes[i].ID < nodes[j].ID
+	})
+
+	updatedAtUTC := ""
+	if !updatedAt.IsZero() {
+		updatedAtUTC = updatedAt.UTC().Format(time.RFC3339)
+	}
+
 	resp := map[string]any{
-		"nodes":           []any{},
-		"nodes_total":     0,
-		"nodes_alive":     0,
+		"nodes":           nodes,
+		"nodes_total":     len(nodes),
+		"nodes_alive":     alive,
+		"updated_at_utc":  updatedAtUTC,
 		"server_time_utc": now.UTC().Format(time.RFC3339),
 	}
 	writeJSON(w, resp)
