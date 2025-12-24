@@ -144,6 +144,7 @@ func TestAdminSSE_ConnectionLimit429(t *testing.T) {
 		UIEnabled:     false,
 		LogBuffer:     buf,
 		MaxSSEClients: 1,
+		SSEHeartbeat:  1 * time.Millisecond,
 	})
 
 	ctx1, cancel1 := context.WithCancel(context.Background())
@@ -169,6 +170,18 @@ func TestAdminSSE_ConnectionLimit429(t *testing.T) {
 		cancel1()
 		<-done1
 		t.Fatalf("expected SSE output")
+	}
+	deadline2 := time.Now().Add(200 * time.Millisecond)
+	for time.Now().Before(deadline2) {
+		if bytes.Contains(rec1.buf.Bytes(), []byte(": ping")) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !bytes.Contains(rec1.buf.Bytes(), []byte(": ping")) {
+		cancel1()
+		<-done1
+		t.Fatalf("expected heartbeat ping")
 	}
 
 	// Second connection should be rejected.

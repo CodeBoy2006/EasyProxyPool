@@ -111,3 +111,9 @@
 - **Status:** Completed
 - **Next Steps:** Harden SSE with heartbeat/disable switches (WEBUI-070) and add the remaining non-code scope doc (WEBUI-000).
 - **Context:** Tests avoid real TCP listeners to stay compatible with sandbox restrictions.
+
+## [2025-12-24 15:23] [WEBUI-070] Hardening: heartbeat + disable switches
+- **Changes:** Added SSE heartbeat support and made log streaming fully disable-able via `admin.log_buffer_lines: 0`; documented rollback/disable path for admin/UI.
+- **Status:** Completed
+- **Next Steps:** Fill in the remaining scope/security boundary doc (WEBUI-000).
+- **Context:** Heartbeat behavior is covered by unit tests; runtime still requires local execution because sandbox blocks TCP listeners.

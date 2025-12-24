@@ -202,6 +202,7 @@ curl -N 'http://127.0.0.1:17287/api/events/logs?token=<token>&since=0&level=info
 ```
 
 Security note: do not expose the admin/dashboard port publicly; keep it on loopback and use auth + network controls.
+Rollback/disable: set `admin.enabled: false` (or `admin.ui_enabled: false` to keep API-only).
 
 ## Security notes
 

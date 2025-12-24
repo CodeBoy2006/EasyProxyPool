@@ -33,6 +33,7 @@ type Options struct {
 
 	LogBuffer     *logging.LogBuffer
 	MaxSSEClients int
+	SSEHeartbeat  time.Duration
 }
 
 type Server struct {
@@ -48,6 +49,8 @@ type Server struct {
 
 	logBuf *logging.LogBuffer
 	sseSem chan struct{}
+
+	sseHeartbeat time.Duration
 }
 
 func New(log *slog.Logger, addr string, status *orchestrator.Status, strictPool, relaxedPool *pool.Pool, opt Options) *Server {
@@ -56,14 +59,15 @@ func New(log *slog.Logger, addr string, status *orchestrator.Status, strictPool,
 		maxSSE = 10
 	}
 	s := &Server{
-		log:         log,
-		status:      status,
-		strictPool:  strictPool,
-		relaxedPool: relaxedPool,
-		auth:        opt.Auth,
-		startedAt:   opt.StartedAt,
-		logBuf:      opt.LogBuffer,
-		sseSem:      make(chan struct{}, maxSSE),
+		log:          log,
+		status:       status,
+		strictPool:   strictPool,
+		relaxedPool:  relaxedPool,
+		auth:         opt.Auth,
+		startedAt:    opt.StartedAt,
+		logBuf:       opt.LogBuffer,
+		sseSem:       make(chan struct{}, maxSSE),
+		sseHeartbeat: opt.SSEHeartbeat,
 	}
 
 	mux := http.NewServeMux()
@@ -260,10 +264,23 @@ func (s *Server) handleLogsSSE(w http.ResponseWriter, r *http.Request) {
 	ch, cancel := s.logBuf.Subscribe(256)
 	defer cancel()
 
+	var ticker *time.Ticker
+	heartbeatC := (<-chan time.Time)(nil)
+	if s.sseHeartbeat > 0 {
+		ticker = time.NewTicker(s.sseHeartbeat)
+		defer ticker.Stop()
+		heartbeatC = ticker.C
+	}
+
 	for {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-heartbeatC:
+			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
 		case e, ok := <-ch:
 			if !ok {
 				return

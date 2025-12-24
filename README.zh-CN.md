@@ -200,6 +200,7 @@ curl -N 'http://127.0.0.1:17287/api/events/logs?token=<token>&since=0&level=info
 ```
 
 安全提示：不要将管理接口/仪表盘端口暴露到公网；建议仅监听回环地址，并配合鉴权与防火墙/访问控制。
+降级/关闭：设置 `admin.enabled: false`（或设置 `admin.ui_enabled: false` 仅保留 API）。
 
 ## 安全提示
 

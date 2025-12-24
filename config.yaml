@@ -89,6 +89,8 @@ admin:
   log_buffer_lines: 2000
   # SSE 并发连接上限（默认 10；超过返回 429）
   sse_max_clients: 10
+  # SSE 心跳间隔（秒；0=禁用；默认 10）
+  sse_heartbeat_seconds: 10
   # 管理接口鉴权（建议只监听在 127.0.0.1；如需公网访问必须开启鉴权并配合 ACL）
   auth:
     # disabled | basic | shared_token

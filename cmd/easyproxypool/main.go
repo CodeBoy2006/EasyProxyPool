@@ -32,8 +32,8 @@ func main() {
 	startedAt := time.Now()
 
 	logBufferLines := 0
-	if cfg.Admin.Enabled && cfg.Admin.LogBufferLines > 0 {
-		logBufferLines = cfg.Admin.LogBufferLines
+	if cfg.Admin.Enabled && cfg.Admin.LogBufferLines != nil {
+		logBufferLines = *cfg.Admin.LogBufferLines
 	}
 	logger, logBuf := logging.NewWithBuffer(cfg.Logging.Level, os.Getenv("LOG_LEVEL"), logBufferLines)
 	logger.Info("starting EasyProxyPool", "config", configPath, "update_every_minutes", cfg.UpdateIntervalMinutes)
@@ -50,12 +50,17 @@ func main() {
 
 	if cfg.Admin.Enabled && cfg.Admin.Addr != "" {
 		uiEnabled := cfg.Admin.UIEnabled == nil || *cfg.Admin.UIEnabled
+		heartbeat := time.Duration(0)
+		if cfg.Admin.SSEHeartbeatSeconds != nil && *cfg.Admin.SSEHeartbeatSeconds > 0 {
+			heartbeat = time.Duration(*cfg.Admin.SSEHeartbeatSeconds) * time.Second
+		}
 		adminServer := admin.New(logger, cfg.Admin.Addr, status, mainPool, mainPool, admin.Options{
 			Auth:          cfg.Admin.Auth,
 			StartedAt:     startedAt,
 			UIEnabled:     uiEnabled,
 			LogBuffer:     logBuf,
 			MaxSSEClients: cfg.Admin.SSEMaxClients,
+			SSEHeartbeat:  heartbeat,
 		})
 		adminServer.Start(ctx)
 	}

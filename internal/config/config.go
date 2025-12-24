@@ -74,11 +74,16 @@ type AdminConfig struct {
 
 	// LogBufferLines controls how many recent log events are kept in memory for SSE streaming.
 	// Default: 2000
-	LogBufferLines int `yaml:"log_buffer_lines"`
+	LogBufferLines *int `yaml:"log_buffer_lines"`
 
 	// SSEMaxClients controls how many concurrent /api/events/logs SSE connections are allowed.
 	// Default: 10
 	SSEMaxClients int `yaml:"sse_max_clients"`
+
+	// SSEHeartbeatSeconds controls how often SSE connections get a heartbeat comment.
+	// Set to 0 to disable.
+	// Default: 10
+	SSEHeartbeatSeconds *int `yaml:"sse_heartbeat_seconds"`
 }
 
 type AdminAuthConfig struct {
@@ -218,11 +223,16 @@ func applyDefaults(cfg *Config) {
 		b := true
 		cfg.Admin.UIEnabled = &b
 	}
-	if cfg.Admin.LogBufferLines == 0 {
-		cfg.Admin.LogBufferLines = 2000
+	if cfg.Admin.LogBufferLines == nil {
+		v := 2000
+		cfg.Admin.LogBufferLines = &v
 	}
 	if cfg.Admin.SSEMaxClients <= 0 {
 		cfg.Admin.SSEMaxClients = 10
+	}
+	if cfg.Admin.SSEHeartbeatSeconds == nil {
+		v := 10
+		cfg.Admin.SSEHeartbeatSeconds = &v
 	}
 	if cfg.Admin.Auth.Mode == "" {
 		cfg.Admin.Auth.Mode = "disabled"
@@ -340,11 +350,14 @@ func validate(cfg Config) error {
 	if strings.ToLower(strings.TrimSpace(cfg.Admin.Auth.Mode)) == "shared_token" && strings.TrimSpace(cfg.Admin.Auth.Token) == "" {
 		return fmt.Errorf("admin.auth.token: required when admin.auth.mode=shared_token")
 	}
-	if cfg.Admin.LogBufferLines < 0 {
+	if cfg.Admin.LogBufferLines != nil && *cfg.Admin.LogBufferLines < 0 {
 		return fmt.Errorf("admin.log_buffer_lines: must be >= 0")
 	}
 	if cfg.Admin.SSEMaxClients <= 0 {
 		return fmt.Errorf("admin.sse_max_clients: must be > 0")
+	}
+	if cfg.Admin.SSEHeartbeatSeconds != nil && *cfg.Admin.SSEHeartbeatSeconds < 0 {
+		return fmt.Errorf("admin.sse_heartbeat_seconds: must be >= 0")
 	}
 	switch cfg.Selection.Strategy {
 	case "round_robin", "random":
