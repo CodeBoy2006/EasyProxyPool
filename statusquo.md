@@ -51,3 +51,9 @@
 - **Status:** Completed
 - **Next Steps:** (Optional) Add rate limiting / audit logs for auth failures if exposed beyond localhost.
 - **Context:** `auth.mode` defaults to `disabled` when `auth.username` is empty, otherwise `basic` for backward compatibility.
+
+## [2025-12-24 14:30] Prune completed issues CSV
+- **Changes:** Removed all completed rows from `issues/issues.csv`, leaving only the header for a clean slate.
+- **Status:** Completed
+- **Next Steps:** Add new issues rows as new work is defined.
+- **Context:** File kept as UTF-8 with BOM for Excel compatibility.
