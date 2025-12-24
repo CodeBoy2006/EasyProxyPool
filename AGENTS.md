@@ -6,7 +6,8 @@
 - `internal/`: application modules (not imported by other repos):
   - `config/`: YAML config loading and defaults.
   - `fetcher/`, `health/`: proxy list retrieval and upstream health checks.
-  - `pool/`: STRICT/RELAXED pool storage and selection helpers.
+  - `pool/`: proxy pool storage and selection helpers.
+  - `clash/`, `sources/`, `upstream/`, `xray/`: Clash YAML parsing, typed source loading, node specs, and optional xray-core adapter.
   - `orchestrator/`: background updater loop and shared status.
   - `server/`: listeners (`socks5proxy/`, `httpproxy/`) and optional admin API (`admin/`).
 - Root files: `config.yaml` (runtime config), `Dockerfile`, `docker-compose.yml`, `README.md`.

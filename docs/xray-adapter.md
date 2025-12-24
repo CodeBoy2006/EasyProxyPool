@@ -8,9 +8,8 @@
 
 ## Data Plane
 
-- EasyProxyPool connects only to local xray SOCKS5 inbounds:
-  - STRICT: `adapters.xray.socks_listen_strict`
-  - RELAXED: `adapters.xray.socks_listen_relaxed`
+- EasyProxyPool connects only to a local xray SOCKS5 inbound:
+  - `adapters.xray.socks_listen_relaxed`
 - Each request/connection selects a **nodeID** from the pool and sets SOCKS5 auth:
   - `username = nodeID` (e.g. `n-<hash>`)
   - `password = adapters.xray.user_password` (shared constant; keep xray on loopback)
@@ -23,10 +22,10 @@
   - `sources` (typed sources like `clash_yaml`)
 - For xray mode:
   1. Convert sources into `UpstreamSpec` nodes (stable `nodeID`).
-  2. Generate xray config for STRICT and RELAXED.
+  2. Generate xray config (RELAXED).
   3. Start/ensure xray processes (external binary).
   4. Poll xray `metrics.listen` expvar `/debug/vars` and read `observatory` results.
-  5. Build STRICT/RELAXED pools from `alive` + `delay` per outbound.
+  5. Build the pool from `alive` + `delay` per outbound.
 
 ## Health Source
 
@@ -44,4 +43,3 @@
 - Example configuration: `config.yaml`
 - Updater integration: `internal/orchestrator/updater.go`
 - Xray config generator: `internal/xray/config.go`
-

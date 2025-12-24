@@ -4,16 +4,13 @@ English | [中文](README.zh-CN.md)
 
 EasyProxyPool is a local **SOCKS5 + HTTP/HTTPS (CONNECT)** proxy that rotates requests through a dynamic pool of upstream SOCKS5 proxies.
 
-It continuously fetches proxy lists from multiple sources, health-checks them, and keeps two pools:
-
-- **STRICT**: upstreams that pass a verified TLS handshake
-- **RELAXED**: upstreams that pass a TLS handshake without certificate verification (more compatible)
+It continuously fetches proxy lists from multiple sources, health-checks them, and keeps a single pool (RELAXED mode for maximum compatibility).
 
 ## Features
 
 - Multi-source proxy list fetch + de-duplication
 - Concurrent health checks with latency thresholding
-- Two pools (STRICT / RELAXED) with separate listeners for SOCKS5 + HTTP
+- Single pool with SOCKS5 + HTTP listeners
 - Per-request upstream selection (`round_robin` or `random`)
 - Retries with exponential backoff + temporary upstream disable on failures
 - Optional authentication:
@@ -45,17 +42,11 @@ LOG_LEVEL=debug ./easyproxypool -config config.yaml
 ### Test
 
 ```bash
-# SOCKS5 STRICT
+# SOCKS5
 curl --socks5 127.0.0.1:17283 https://api.ipify.org
 
-# SOCKS5 RELAXED
-curl --socks5 127.0.0.1:17284 https://api.ipify.org
-
-# HTTP STRICT
+# HTTP
 curl -x http://127.0.0.1:17285 https://api.ipify.org
-
-# HTTP RELAXED
-curl -x http://127.0.0.1:17286 https://api.ipify.org
 ```
 
 ## Docker
@@ -64,7 +55,7 @@ curl -x http://127.0.0.1:17286 https://api.ipify.org
 docker build -t easyproxypool .
 docker run -d \
   --name easyproxypool \
-  -p 17283:17283 -p 17284:17284 -p 17285:17285 -p 17286:17286 \
+  -p 17283:17283 -p 17285:17285 \
   -v $(pwd)/config.yaml:/app/config.yaml:ro \
   --restart unless-stopped \
   easyproxypool
@@ -106,19 +97,17 @@ adapters:
     enabled: true
     binary_path: "/usr/local/bin/xray"
     # Keep xray on loopback. EasyProxyPool routes each connection by SOCKS username (= nodeID).
-    socks_listen_strict: "127.0.0.1:17383"
-    socks_listen_relaxed: "127.0.0.1:17384"
+    socks_listen_relaxed: "127.0.0.1:17383"
     # Used for polling /debug/vars (observatory alive/delay)
-    metrics_listen_strict: "127.0.0.1:17387"
-    metrics_listen_relaxed: "127.0.0.1:17388"
+    metrics_listen_relaxed: "127.0.0.1:17387"
     fallback_to_legacy_on_error: true
 ```
 
 Notes:
 
-- STRICT/RELAXED in xray mode is implemented by running two xray instances with different TLS behavior.
+- EasyProxyPool runs a single xray instance (RELAXED) and routes each connection by SOCKS username (= nodeID).
 - Observatory uses HTTPing probes; tune `adapters.xray.observatory.*` for your environment.
-- If xray fails to start or metrics are unavailable, EasyProxyPool keeps the existing pools; with
+- If xray fails to start or metrics are unavailable, EasyProxyPool keeps the existing pool; with
   `fallback_to_legacy_on_error: true` it will also try the legacy `proxy_list_urls` pipeline.
 
 ### Security / licensing

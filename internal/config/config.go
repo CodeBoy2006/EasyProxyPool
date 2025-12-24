@@ -75,9 +75,9 @@ type AdaptersConfig struct {
 }
 
 type XrayConfig struct {
-	Enabled   bool   `yaml:"enabled"`
+	Enabled    bool   `yaml:"enabled"`
 	BinaryPath string `yaml:"binary_path"`
-	WorkDir   string `yaml:"work_dir"`
+	WorkDir    string `yaml:"work_dir"`
 
 	SOCKSListenStrict  string `yaml:"socks_listen_strict"`
 	SOCKSListenRelaxed string `yaml:"socks_listen_relaxed"`
@@ -151,16 +151,16 @@ func applyDefaults(cfg *Config) {
 		cfg.HealthCheck.TargetServerName = "www.google.com"
 	}
 	if cfg.Ports.SOCKS5Strict == "" {
-		cfg.Ports.SOCKS5Strict = ":17283"
+		cfg.Ports.SOCKS5Strict = ""
 	}
 	if cfg.Ports.SOCKS5Relaxed == "" {
-		cfg.Ports.SOCKS5Relaxed = ":17284"
+		cfg.Ports.SOCKS5Relaxed = ":17283"
 	}
 	if cfg.Ports.HTTPStrict == "" {
-		cfg.Ports.HTTPStrict = ":17285"
+		cfg.Ports.HTTPStrict = ""
 	}
 	if cfg.Ports.HTTPRelaxed == "" {
-		cfg.Ports.HTTPRelaxed = ":17286"
+		cfg.Ports.HTTPRelaxed = ":17285"
 	}
 	if cfg.Logging.Level == "" {
 		cfg.Logging.Level = "info"
@@ -185,16 +185,16 @@ func applyDefaults(cfg *Config) {
 		cfg.Adapters.Xray.WorkDir = ".easyproxypool/xray"
 	}
 	if cfg.Adapters.Xray.SOCKSListenStrict == "" {
-		cfg.Adapters.Xray.SOCKSListenStrict = "127.0.0.1:17383"
+		cfg.Adapters.Xray.SOCKSListenStrict = ""
 	}
 	if cfg.Adapters.Xray.SOCKSListenRelaxed == "" {
-		cfg.Adapters.Xray.SOCKSListenRelaxed = "127.0.0.1:17384"
+		cfg.Adapters.Xray.SOCKSListenRelaxed = "127.0.0.1:17383"
 	}
 	if cfg.Adapters.Xray.MetricsListenStrict == "" {
-		cfg.Adapters.Xray.MetricsListenStrict = "127.0.0.1:17387"
+		cfg.Adapters.Xray.MetricsListenStrict = ""
 	}
 	if cfg.Adapters.Xray.MetricsListenRelaxed == "" {
-		cfg.Adapters.Xray.MetricsListenRelaxed = "127.0.0.1:17388"
+		cfg.Adapters.Xray.MetricsListenRelaxed = "127.0.0.1:17387"
 	}
 	if cfg.Adapters.Xray.UserPassword == "" {
 		cfg.Adapters.Xray.UserPassword = "easyproxypool"
@@ -246,11 +246,11 @@ func validate(cfg Config) error {
 		if cfg.Adapters.Xray.BinaryPath == "" {
 			return fmt.Errorf("adapters.xray.binary_path: required when adapters.xray.enabled=true")
 		}
-		if cfg.Adapters.Xray.SOCKSListenStrict == "" || cfg.Adapters.Xray.SOCKSListenRelaxed == "" {
-			return fmt.Errorf("adapters.xray.socks_listen_*: required when adapters.xray.enabled=true")
+		if cfg.Adapters.Xray.SOCKSListenRelaxed == "" {
+			return fmt.Errorf("adapters.xray.socks_listen_relaxed: required when adapters.xray.enabled=true")
 		}
-		if cfg.Adapters.Xray.MetricsListenStrict == "" || cfg.Adapters.Xray.MetricsListenRelaxed == "" {
-			return fmt.Errorf("adapters.xray.metrics_listen_*: required when adapters.xray.enabled=true")
+		if cfg.Adapters.Xray.MetricsListenRelaxed == "" {
+			return fmt.Errorf("adapters.xray.metrics_listen_relaxed: required when adapters.xray.enabled=true")
 		}
 		if cfg.Adapters.Xray.UserPassword == "" {
 			return fmt.Errorf("adapters.xray.user_password: required when adapters.xray.enabled=true")

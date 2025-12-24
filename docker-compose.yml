@@ -5,10 +5,8 @@ services:
     build: .
     container_name: easyproxypool
     ports:
-      - "17283:17283"  # SOCKS5 Strict (SSL verification enabled)
-      - "17284:17284"  # SOCKS5 Relaxed (SSL verification disabled)
-      - "17285:17285"  # HTTP Strict (SSL verification enabled)
-      - "17286:17286"  # HTTP Relaxed (SSL verification disabled)
+      - "17283:17283"  # SOCKS5
+      - "17285:17285"  # HTTP/HTTPS (CONNECT)
     volumes:
       - ./config.yaml:/app/config.yaml:ro  # Mount config as read-only
     restart: unless-stopped

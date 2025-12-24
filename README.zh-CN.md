@@ -4,16 +4,13 @@
 
 EasyProxyPool 是一个本地运行的 **SOCKS5 + HTTP/HTTPS（CONNECT）** 动态代理程序，会将请求轮询/随机分发到一组上游 SOCKS5 代理（代理池）中。
 
-程序会持续从多个来源拉取代理列表、并发测活，并维护两套代理池：
-
-- **STRICT（严格）**：通过“带证书校验”的 TLS 握手检测
-- **RELAXED（宽松）**：通过“跳过证书校验”的 TLS 握手检测（兼容性更好）
+程序会持续从多个来源拉取代理列表、并发测活，并维护一套代理池（RELAXED 模式，兼容性优先）。
 
 ## 功能特性
 
 - 多源代理列表拉取 + 去重
 - 高并发测活 + 延迟阈值过滤
-- 两套代理池（STRICT / RELAXED），分别提供 SOCKS5 + HTTP 四个监听端口
+- 单套代理池，提供 SOCKS5 + HTTP 两个监听端口
 - 上游选择策略（`round_robin` 或 `random`）
 - 请求失败自动重试（切换上游）+ 指数退避 + 临时禁用失败上游
 - 可选认证：
@@ -45,17 +42,11 @@ LOG_LEVEL=debug ./easyproxypool -config config.yaml
 ### 测试
 
 ```bash
-# SOCKS5 STRICT
+# SOCKS5
 curl --socks5 127.0.0.1:17283 https://api.ipify.org
 
-# SOCKS5 RELAXED
-curl --socks5 127.0.0.1:17284 https://api.ipify.org
-
-# HTTP STRICT
+# HTTP
 curl -x http://127.0.0.1:17285 https://api.ipify.org
-
-# HTTP RELAXED
-curl -x http://127.0.0.1:17286 https://api.ipify.org
 ```
 
 ## Docker
@@ -64,7 +55,7 @@ curl -x http://127.0.0.1:17286 https://api.ipify.org
 docker build -t easyproxypool .
 docker run -d \
   --name easyproxypool \
-  -p 17283:17283 -p 17284:17284 -p 17285:17285 -p 17286:17286 \
+  -p 17283:17283 -p 17285:17285 \
   -v $(pwd)/config.yaml:/app/config.yaml:ro \
   --restart unless-stopped \
   easyproxypool
@@ -106,17 +97,15 @@ adapters:
     enabled: true
     binary_path: "/usr/local/bin/xray"
     # 建议仅监听在本机回环。EasyProxyPool 会用 SOCKS username (= nodeID) 指定每条连接走哪个节点。
-    socks_listen_strict: "127.0.0.1:17383"
-    socks_listen_relaxed: "127.0.0.1:17384"
+    socks_listen_relaxed: "127.0.0.1:17383"
     # 用于拉取 /debug/vars（observatory 的 alive/delay）
-    metrics_listen_strict: "127.0.0.1:17387"
-    metrics_listen_relaxed: "127.0.0.1:17388"
+    metrics_listen_relaxed: "127.0.0.1:17387"
     fallback_to_legacy_on_error: true
 ```
 
 说明：
 
-- xray 模式下的 STRICT/RELAXED 通过两个 xray 实例实现（TLS 行为不同）。
+- EasyProxyPool 只运行一个 xray 实例（RELAXED），并通过 SOCKS username (= nodeID) 指定每条连接走哪个节点。
 - Observatory 采用 HTTPing 探测；可通过 `adapters.xray.observatory.*` 调整探测目标与间隔。
 - 若 xray 启动失败或 metrics 不可用，程序会保留现有代理池；若开启 `fallback_to_legacy_on_error: true`，会尝试回退到 `proxy_list_urls` 的旧流程。
 

@@ -35,28 +35,28 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	strictPool := pool.New("strict", logger)
-	relaxedPool := pool.New("relaxed", logger)
+	mainPool := pool.New("pool", logger)
 
 	status := orchestrator.NewStatus()
 
-	updater := orchestrator.NewUpdater(logger, cfg, strictPool, relaxedPool, status)
+	updater := orchestrator.NewUpdater(logger, cfg, mainPool, mainPool, status)
 	updater.Start(ctx)
 
 	if cfg.Admin.Enabled && cfg.Admin.Addr != "" {
-		adminServer := admin.New(logger, cfg.Admin.Addr, status, strictPool, relaxedPool)
+		adminServer := admin.New(logger, cfg.Admin.Addr, status, mainPool, mainPool)
 		adminServer.Start(ctx)
 	}
 
-	socksStrict := socks5proxy.New(logger, cfg.Ports.SOCKS5Strict, socks5proxy.ModeStrict, strictPool, cfg.Auth, cfg.Selection)
-	socksRelaxed := socks5proxy.New(logger, cfg.Ports.SOCKS5Relaxed, socks5proxy.ModeRelaxed, relaxedPool, cfg.Auth, cfg.Selection)
-	httpStrict := httpproxy.New(logger, cfg.Ports.HTTPStrict, httpproxy.ModeStrict, strictPool, cfg.Auth, cfg.Selection)
-	httpRelaxed := httpproxy.New(logger, cfg.Ports.HTTPRelaxed, httpproxy.ModeRelaxed, relaxedPool, cfg.Auth, cfg.Selection)
-
-	socksStrict.Start(ctx)
-	socksRelaxed.Start(ctx)
-	httpStrict.Start(ctx)
-	httpRelaxed.Start(ctx)
+	var socks *socks5proxy.Server
+	var httpSrv *httpproxy.Server
+	if cfg.Ports.SOCKS5Relaxed != "" {
+		socks = socks5proxy.New(logger, cfg.Ports.SOCKS5Relaxed, socks5proxy.ModeRelaxed, mainPool, cfg.Auth, cfg.Selection)
+		socks.Start(ctx)
+	}
+	if cfg.Ports.HTTPRelaxed != "" {
+		httpSrv = httpproxy.New(logger, cfg.Ports.HTTPRelaxed, httpproxy.ModeRelaxed, mainPool, cfg.Auth, cfg.Selection)
+		httpSrv.Start(ctx)
+	}
 
 	<-ctx.Done()
 
@@ -64,8 +64,10 @@ func main() {
 	defer cancel()
 
 	updater.Stop(shutdownCtx)
-	socksStrict.Stop(shutdownCtx)
-	socksRelaxed.Stop(shutdownCtx)
-	httpStrict.Stop(shutdownCtx)
-	httpRelaxed.Stop(shutdownCtx)
+	if socks != nil {
+		socks.Stop(shutdownCtx)
+	}
+	if httpSrv != nil {
+		httpSrv.Stop(shutdownCtx)
+	}
 }

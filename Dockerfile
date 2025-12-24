@@ -31,7 +31,7 @@ COPY --from=builder /app/easyproxypool .
 COPY config.yaml .
 
 # Expose ports
-EXPOSE 17283 17284 17285 17286
+EXPOSE 17283 17285
 
 # Run the application
 CMD ["./easyproxypool", "-config", "config.yaml"]

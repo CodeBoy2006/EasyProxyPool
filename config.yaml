@@ -34,10 +34,11 @@ health_check:
 
 # 服务器端口配置
 ports:
-  socks5_strict: ":17283"
-  socks5_relaxed: ":17284"
-  http_strict: ":17285"
-  http_relaxed: ":17286"
+  # 仅启用一套端口（RELAXED）
+  socks5_relaxed: ":17283"
+  http_relaxed: ":17285"
+  # socks5_strict: ""
+  # http_strict: ""
 
 # 日志
 logging:
@@ -73,10 +74,8 @@ admin:
 #     enabled: false
 #     binary_path: "/usr/local/bin/xray"
 #     work_dir: ".easyproxypool/xray"
-#     socks_listen_strict: "127.0.0.1:17383"
-#     socks_listen_relaxed: "127.0.0.1:17384"
-#     metrics_listen_strict: "127.0.0.1:17387"
-#     metrics_listen_relaxed: "127.0.0.1:17388"
+#     socks_listen_relaxed: "127.0.0.1:17383"
+#     metrics_listen_relaxed: "127.0.0.1:17387"
 #     user_password: "easyproxypool"
 #     fallback_to_legacy_on_error: true
 #     max_nodes: 2000
