@@ -137,18 +137,32 @@ func safeURL(r *http.Request) string {
 }
 
 func (s *Server) authorizeHTTP(w http.ResponseWriter, r *http.Request) bool {
-	if strings.TrimSpace(s.auth.Username) == "" {
+	switch strings.ToLower(strings.TrimSpace(s.auth.Mode)) {
+	case "", "disabled":
 		return true
-	}
-
-	v := r.Header.Get("Proxy-Authorization")
-	user, pass, ok := parseBasicAuth(v)
-	if !ok || user != s.auth.Username || pass != s.auth.Password {
+	case "basic":
+		v := r.Header.Get("Proxy-Authorization")
+		user, pass, ok := parseBasicAuth(v)
+		if !ok || user != s.auth.Username || pass != s.auth.Password {
+			w.Header().Set("Proxy-Authenticate", `Basic realm="EasyProxyPool"`)
+			http.Error(w, "Proxy authentication required", http.StatusProxyAuthRequired)
+			return false
+		}
+		return true
+	case "shared_password":
+		v := r.Header.Get("Proxy-Authorization")
+		_, pass, ok := parseBasicAuth(v)
+		if !ok || pass != s.auth.Password {
+			w.Header().Set("Proxy-Authenticate", `Basic realm="EasyProxyPool"`)
+			http.Error(w, "Proxy authentication required", http.StatusProxyAuthRequired)
+			return false
+		}
+		return true
+	default:
 		w.Header().Set("Proxy-Authenticate", `Basic realm="EasyProxyPool"`)
 		http.Error(w, "Proxy authentication required", http.StatusProxyAuthRequired)
 		return false
 	}
-	return true
 }
 
 func parseBasicAuth(v string) (string, string, bool) {

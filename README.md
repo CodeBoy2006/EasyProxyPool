@@ -84,6 +84,29 @@ Key options:
 - `admin.*`: optional status API
 - `adapters.xray.*`: enable xray-core adapter for Clash-style nodes (optional; default disabled)
 
+### Authentication
+
+`auth.mode`:
+
+- `disabled`: no auth
+- `basic`: require exact username/password match
+- `shared_password`: allow any username, require password match (useful when you want username as a session/tenant key)
+
+Example (shared password):
+
+```yaml
+auth:
+  mode: shared_password
+  password: "shared-secret"
+```
+
+Then clients can send any username:
+
+```bash
+curl -x http://127.0.0.1:17285 -U 'tenantA:shared-secret' https://api.ipify.org
+curl -x http://127.0.0.1:17285 -U 'tenantB:shared-secret' https://api.ipify.org
+```
+
 ### Session-key sticky egress (HTTP proxy only)
 
 If you want to pin a "session" to a fixed egress IP (upstream node), enable `selection.sticky`.
@@ -93,7 +116,7 @@ appear/disappear, most sessions keep their existing mapping.
 Session key sources (highest priority first):
 
 1) `X-EasyProxyPool-Session` (when `selection.sticky.header_override=true`)
-2) `Proxy-Authorization` Basic username
+2) `Proxy-Authorization` Basic username (works best with `auth.mode: shared_password`)
 3) W3C `traceparent` trace-id (fallback)
 
 Per-request overrides (optional; controlled by `selection.sticky.header_override`):

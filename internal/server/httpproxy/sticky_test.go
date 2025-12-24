@@ -3,6 +3,7 @@ package httpproxy
 import (
 	"encoding/base64"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/CodeBoy2006/EasyProxyPool/internal/config"
@@ -138,5 +139,68 @@ func TestPickRendezvous_StableAndExclude(t *testing.T) {
 	}
 	if second.Key() == best1.Key() {
 		t.Fatalf("expected different pick when excluding best")
+	}
+}
+
+func TestAuthorizeHTTP_SharedPassword(t *testing.T) {
+	truePtr := func() *bool { b := true; return &b }()
+	s := &Server{
+		auth: config.AuthConfig{
+			Mode:     "shared_password",
+			Password: "p",
+		},
+		selection: config.SelectionConfig{
+			Sticky: config.StickyConfig{
+				HeaderOverride: truePtr,
+				Failover:       "soft",
+			},
+		},
+	}
+
+	req, _ := http.NewRequest("GET", "http://example.com", nil)
+	req.Header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("anyuser:p")))
+	rr := httptest.NewRecorder()
+	if ok := s.authorizeHTTP(rr, req); !ok {
+		t.Fatalf("expected authorized")
+	}
+}
+
+func TestAuthorizeHTTP_Basic(t *testing.T) {
+	s := &Server{
+		auth: config.AuthConfig{
+			Mode:     "basic",
+			Username: "u",
+			Password: "p",
+		},
+	}
+
+	okReq, _ := http.NewRequest("GET", "http://example.com", nil)
+	okReq.Header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("u:p")))
+	rr := httptest.NewRecorder()
+	if ok := s.authorizeHTTP(rr, okReq); !ok {
+		t.Fatalf("expected authorized")
+	}
+
+	badReq, _ := http.NewRequest("GET", "http://example.com", nil)
+	badReq.Header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("u:bad")))
+	rr = httptest.NewRecorder()
+	if ok := s.authorizeHTTP(rr, badReq); ok {
+		t.Fatalf("expected unauthorized")
+	}
+	if rr.Code != http.StatusProxyAuthRequired {
+		t.Fatalf("expected 407, got %d", rr.Code)
+	}
+}
+
+func TestAuthorizeHTTP_Disabled(t *testing.T) {
+	s := &Server{
+		auth: config.AuthConfig{
+			Mode: "disabled",
+		},
+	}
+	req, _ := http.NewRequest("GET", "http://example.com", nil)
+	rr := httptest.NewRecorder()
+	if ok := s.authorizeHTTP(rr, req); !ok {
+		t.Fatalf("expected authorized")
 	}
 }

@@ -47,6 +47,11 @@ logging:
 
 # 本地代理认证（可选；HTTP 使用 Proxy-Authorization Basic；SOCKS5 使用用户名密码）
 auth:
+  # disabled | basic | shared_password
+  # - disabled: 不启用认证
+  # - basic: username/password 必须匹配
+  # - shared_password: 允许任意 username，仅校验 password（共享密钥；username 可用于会话/租户标识）
+  mode: disabled
   username: ""
   password: ""
 

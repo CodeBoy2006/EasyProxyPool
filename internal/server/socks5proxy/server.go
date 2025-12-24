@@ -56,10 +56,7 @@ func (s *Server) Start(ctx context.Context) {
 		}(),
 	}
 
-	if strings.TrimSpace(s.auth.Username) != "" {
-		creds := socks5.StaticCredentials{
-			s.auth.Username: s.auth.Password,
-		}
+	if creds := credentialStoreFromAuth(s.auth); creds != nil {
 		conf.Credentials = creds
 	}
 
@@ -93,6 +90,33 @@ func (s *Server) Start(ctx context.Context) {
 func (s *Server) Stop(ctx context.Context) {
 	if s.ln != nil {
 		_ = s.ln.Close()
+	}
+}
+
+type sharedPasswordCredentials struct {
+	password string
+}
+
+func (c sharedPasswordCredentials) Valid(user, password string) bool {
+	return password == c.password
+}
+
+func credentialStoreFromAuth(auth config.AuthConfig) socks5.CredentialStore {
+	switch strings.ToLower(strings.TrimSpace(auth.Mode)) {
+	case "", "disabled":
+		return nil
+	case "basic":
+		if strings.TrimSpace(auth.Username) == "" {
+			return nil
+		}
+		return socks5.StaticCredentials{auth.Username: auth.Password}
+	case "shared_password":
+		if strings.TrimSpace(auth.Password) == "" {
+			return nil
+		}
+		return sharedPasswordCredentials{password: auth.Password}
+	default:
+		return nil
 	}
 }
 

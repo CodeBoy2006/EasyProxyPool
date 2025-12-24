@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -53,6 +54,11 @@ type LoggingConfig struct {
 }
 
 type AuthConfig struct {
+	// Mode supports:
+	// - disabled: no auth
+	// - basic: require username/password match
+	// - shared_password: allow any username, require password match
+	Mode     string `yaml:"mode"`
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
 }
@@ -180,6 +186,13 @@ func applyDefaults(cfg *Config) {
 	if cfg.Admin.Addr == "" {
 		cfg.Admin.Addr = ":17287"
 	}
+	if cfg.Auth.Mode == "" {
+		if strings.TrimSpace(cfg.Auth.Username) == "" {
+			cfg.Auth.Mode = "disabled"
+		} else {
+			cfg.Auth.Mode = "basic"
+		}
+	}
 	if cfg.Selection.Strategy == "" {
 		cfg.Selection.Strategy = "round_robin"
 	}
@@ -254,6 +267,17 @@ func validate(cfg Config) error {
 	}
 	if cfg.UpdateIntervalMinutes <= 0 {
 		return fmt.Errorf("update_interval_minutes: must be > 0")
+	}
+	switch cfg.Auth.Mode {
+	case "disabled", "basic", "shared_password":
+	default:
+		return fmt.Errorf("auth.mode: unsupported %q (use disabled, basic, or shared_password)", cfg.Auth.Mode)
+	}
+	if cfg.Auth.Mode == "basic" && strings.TrimSpace(cfg.Auth.Username) == "" {
+		return fmt.Errorf("auth.username: required when auth.mode=basic")
+	}
+	if cfg.Auth.Mode == "shared_password" && strings.TrimSpace(cfg.Auth.Password) == "" {
+		return fmt.Errorf("auth.password: required when auth.mode=shared_password")
 	}
 	switch cfg.Selection.Strategy {
 	case "round_robin", "random":

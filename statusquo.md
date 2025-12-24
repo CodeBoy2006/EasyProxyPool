@@ -45,3 +45,9 @@
 - **Status:** Completed
 - **Next Steps:** Consider adding an admin endpoint to list safe upstream keys (no secrets) to make `X-EasyProxyPool-Upstream` easier to use.
 - **Context:** `X-EasyProxyPool-Session` is only honored when `selection.sticky.header_override=true`; the header is stripped from forwarded requests.
+
+## [2025-12-24 14:24] Add shared-password auth mode
+- **Changes:** Added `auth.mode=shared_password` to allow any username and validate only the password (shared secret) for both HTTP and SOCKS5, enabling “username as session/tenant key” while keeping a shared credential.
+- **Status:** Completed
+- **Next Steps:** (Optional) Add rate limiting / audit logs for auth failures if exposed beyond localhost.
+- **Context:** `auth.mode` defaults to `disabled` when `auth.username` is empty, otherwise `basic` for backward compatibility.

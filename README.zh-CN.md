@@ -84,6 +84,29 @@ docker-compose up -d
 - `admin.*`：管理接口开关与监听地址
 - `adapters.xray.*`：启用 xray-core 作为 Clash 节点协议适配层（可选，默认关闭）
 
+### 认证
+
+`auth.mode`：
+
+- `disabled`：不启用认证
+- `basic`：username/password 必须完全匹配
+- `shared_password`：允许任意 username，仅校验 password（共享密钥；username 可用于会话/租户标识）
+
+示例（共享密钥）：
+
+```yaml
+auth:
+  mode: shared_password
+  password: "shared-secret"
+```
+
+此时客户端可以使用任意 username：
+
+```bash
+curl -x http://127.0.0.1:17285 -U 'tenantA:shared-secret' https://api.ipify.org
+curl -x http://127.0.0.1:17285 -U 'tenantB:shared-secret' https://api.ipify.org
+```
+
 ### 基于会话 key 的“固定出口 IP”（仅 HTTP 代理路径）
 
 如需把一个“会话”绑定到固定出口 IP（上游节点），启用 `selection.sticky`。
@@ -92,7 +115,7 @@ EasyProxyPool 会对当前存活节点集合使用 **Rendezvous（HRW）一致�
 会话 key 来源（优先级从高到低）：
 
 1) `X-EasyProxyPool-Session`（当 `selection.sticky.header_override=true`）
-2) `Proxy-Authorization` Basic 的 username
+2) `Proxy-Authorization` Basic 的 username（配合 `auth.mode: shared_password` 最适合）
 3) W3C `traceparent` 的 trace-id（兜底）
 
 可选的逐请求覆盖（由 `selection.sticky.header_override` 控制）：
